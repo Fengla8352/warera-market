@@ -153,6 +153,21 @@ async function fetchPage(env, cursor) {
   const input = { limit: 100, transactionType: "itemMarket" };
   if (cursor) input.cursor = cursor;
   const data = await trpc(env, "transaction.getPaginatedTransactions", input);
+  // dijagnostika: što API zapravo vraća (prva stranica i zadnja dohvaćena stranica)
+  try {
+    const arr = data?.items || [];
+    const info = {
+      at: new Date().toISOString(),
+      sent_cursor: cursor ?? null,
+      n: arr.length,
+      hasMore: data?.hasMore ?? null,
+      nextCursor: data?.nextCursor ?? null,
+      keys: data && typeof data === "object" ? Object.keys(data) : null,
+      first: arr[0]?.createdAt ?? null,
+      last: arr[arr.length - 1]?.createdAt ?? null,
+    };
+    await setMeta(env, cursor ? "dbg_last" : "dbg_first", JSON.stringify(info));
+  } catch {}
   return {
     items: data?.items || [],
     nextCursor: data?.nextCursor || null,
@@ -490,6 +505,17 @@ async function apiStatus(env) {
       has_api_key: Boolean(env.WARERA_API_KEY),
       order: meta.order || null,
       errors: Object.fromEntries(Object.entries(meta).filter(([k]) => k.startsWith("err_"))),
+      debug: Object.fromEntries(
+        Object.entries(meta)
+          .filter(([k]) => k.startsWith("dbg_"))
+          .map(([k, v]) => {
+            try {
+              return [k, JSON.parse(v)];
+            } catch {
+              return [k, v];
+            }
+          }),
+      ),
     },
     200,
     { "cache-control": "public, max-age=15" },
