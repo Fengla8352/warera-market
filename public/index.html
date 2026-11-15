@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WarEra Market Ranking</title>
+<style>
+  :root {
+    --bg: #0f1218; --panel: #171c26; --line: #262d3b; --text: #e6e9ef; --muted: #8b94a7;
+    --accent: #f0b429; --accent-2: #4cc9f0; --buy: #4ade80; --sell: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  .filters { display: grid; grid-template-columns: 2fr 1.3fr 1.3fr 1.2fr; gap: 10px; margin-bottom: 14px; }
+  @media (max-width: 720px) { .filters { grid-template-columns: 1fr 1fr; } .filters input { grid-column: 1 / -1; } }
+  input, select, button {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px; font: inherit; width: 100%;
+  }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 720px; }
+  th, td { padding: 10px 12px; text-align: right; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--line); }
+  td { border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: 0; }
+  th:nth-child(-n+4), td:nth-child(-n+4) { text-align: left; }
+  td.rank { color: var(--muted); width: 56px; font-variant-numeric: tabular-nums; }
+  td.num { font-variant-numeric: tabular-nums; }
+  td.main { color: var(--accent); font-weight: 700; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #1c2230; }
+  .name { font-weight: 600; }
+  .tag { color: var(--muted); }
+  .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 10px; }
+  .pager button { width: auto; min-width: 110px; cursor: pointer; }
+  .pager button:disabled { opacity: .4; cursor: default; }
+  .empty { padding: 32px; text-align: center; color: var(--muted); }
+  .status { margin-top: 20px; color: var(--muted); font-size: 12px; }
+  .status b { color: var(--text); font-weight: 600; }
+  .err { color: var(--sell); }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 14px; width: min(720px, 94vw); padding: 0; }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  .dhead { display: flex; justify-content: space-between; align-items: flex-start; padding: 18px 20px 10px; gap: 12px; }
+  .dhead h2 { margin: 0; font-size: 19px; }
+  .dhead button { width: auto; padding: 6px 12px; cursor: pointer; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 20px 14px; }
+  .kpi { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  .kpi small { color: var(--muted); display: block; font-size: 11px; text-transform: uppercase; }
+  .kpi span { font-weight: 700; font-variant-numeric: tabular-nums; }
+  @media (max-width: 560px) { .kpis { grid-template-columns: 1fr 1fr; } }
+  .dbody { max-height: 46vh; overflow: auto; border-top: 1px solid var(--line); }
+  .dbody table { min-width: 0; }
+  .dbody th, .dbody td { text-align: left; padding: 8px 12px; }
+  .buy { color: var(--buy); } .sell { color: var(--sell); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span>WarEra</span> Market Ranking</h1>
+  <p class="sub">Rang lista igrača po broju kupljenih itema na tržištu — cijela povijest transakcija.</p>
+
+  <div class="filters">
+    <input id="q" type="search" placeholder="Traži igrača (ime ili ID)…" autocomplete="off">
+    <select id="country" aria-label="Država"><option value="">Sve države</option></select>
+    <select id="alliance" aria-label="Savez"><option value="">Svi savezi</option></select>
+    <select id="sort" aria-label="Sortiranje">
+      <option value="bought_qty">Kupljeni itemi</option>
+      <option value="bought_money">Potrošen novac</option>
+      <option value="sold_qty">Prodani itemi</option>
+      <option value="sold_money">Zarada od prodaje</option>
+      <option value="tx">Broj transakcija</option>
+    </select>
+  </div>
+
+  <div class="card"><div class="scroll">
+    <table>
+      <thead><tr>
+        <th>#</th><th>Igrač</th><th>Država</th><th>Savez</th>
+        <th>Kupljeno</th><th>Potrošeno</th><th>Prodano</th><th>Zarađeno</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div></div>
+
+  <div class="pager">
+    <button id="prev">← Prethodna</button>
+    <span id="page" class="tag"></span>
+    <button id="next">Sljedeća →</button>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+
+<dialog id="dlg">
+  <div class="dhead">
+    <div><h2 id="d-name"></h2><div class="tag" id="d-meta"></div></div>
+    <button id="d-close">Zatvori</button>
+  </div>
+  <div class="kpis" id="d-kpis"></div>
+  <div class="dbody"><table><thead><tr><th>Vrijeme</th><th></th><th>Item</th><th>Kol.</th><th>Novac</th><th>Protustranka</th></tr></thead><tbody id="d-rows"></tbody></table></div>
+</dialog>
+
+<script>
+const LIMIT = 50;
+const $ = (id) => document.getElementById(id);
+const state = { offset: 0 };
+const fmt = (n) => (n == null ? "–" : Number(n).toLocaleString("hr-HR", { maximumFractionDigits: 2 }));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+async function api(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+async function loadFilters() {
+  const f = await api("/api/filters");
+  for (const c of f.countries) $("country").insertAdjacentHTML("beforeend", `<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`);
+  for (const a of f.alliances) $("alliance").insertAdjacentHTML("beforeend", `<option value="${esc(a.id)}">${esc(a.name || a.id)}</option>`);
+}
+
+async function load() {
+  const p = new URLSearchParams({ limit: LIMIT, offset: state.offset, sort: $("sort").value });
+  if ($("q").value.trim()) p.set("q", $("q").value.trim());
+  if ($("country").value) p.set("country", $("country").value);
+  if ($("alliance").value) p.set("alliance", $("alliance").value);
+  const data = await api("/api/ranking?" + p);
+  const tb = $("rows");
+  if (!data.rows.length) {
+    tb.innerHTML = `<tr><td colspan="8" class="empty">Nema rezultata.</td></tr>`;
+  } else {
+    tb.innerHTML = data.rows.map((r) => `
+      <tr data-id="${esc(r.user_id)}">
+        <td class="rank">${r.rank}</td>
+        <td class="name">${esc(r.name || r.user_id)}</td>
+        <td>${esc(r.country_name || "–")}</td>
+        <td class="tag">${esc(r.alliance_name || "–")}</td>
+        <td class="num ${$("sort").value === "bought_qty" ? "main" : ""}">${fmt(r.bought_qty)}</td>
+        <td class="num">${fmt(r.bought_money)}</td>
+        <td class="num">${fmt(r.sold_qty)}</td>
+        <td class="num">${fmt(r.sold_money)}</td>
+      </tr>`).join("");
+  }
+  $("prev").disabled = state.offset === 0;
+  $("next").disabled = !data.hasMore;
+  $("page").textContent = `Prikaz ${state.offset + 1}–${state.offset + data.rows.length}`;
+}
+
+function reload() { state.offset = 0; load().catch(showErr); }
+function showErr() { $("rows").innerHTML = `<tr><td colspan="8" class="empty err">Greška pri dohvaćanju podataka.</td></tr>`; }
+
+let timer;
+$("q").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(reload, 300); });
+for (const id of ["country", "alliance", "sort"]) $(id).addEventListener("change", reload);
+$("prev").onclick = () => { state.offset = Math.max(0, state.offset - LIMIT); load(); window.scrollTo({ top: 0 }); };
+$("next").onclick = () => { state.offset += LIMIT; load(); window.scrollTo({ top: 0 }); };
+
+$("rows").addEventListener("click", async (e) => {
+  const tr = e.target.closest("tr[data-id]");
+  if (!tr) return;
+  $("d-name").textContent = tr.querySelector(".name").textContent;
+  $("d-meta").textContent = "Učitavanje…";
+  $("d-kpis").innerHTML = ""; $("d-rows").innerHTML = "";
+  $("dlg").showModal();
+  try {
+    const { player: p, recent } = await api("/api/player/" + encodeURIComponent(tr.dataset.id));
+    $("d-meta").textContent = [p.country_name, p.alliance_name].filter(Boolean).join(" · ") || "ID " + p.user_id;
+    $("d-kpis").innerHTML = [
+      ["Kupljeno", p.bought_qty], ["Potrošeno", p.bought_money], ["Prodano", p.sold_qty], ["Zarađeno", p.sold_money],
+    ].map(([l, v]) => `<div class="kpi"><small>${l}</small><span>${fmt(v)}</span></div>`).join("");
+    $("d-rows").innerHTML = recent.length ? recent.map((t) => `
+      <tr><td>${new Date(t.at).toLocaleString("hr-HR")}</td>
+      <td class="${t.side}">${t.side === "buy" ? "Kupnja" : "Prodaja"}</td>
+      <td>${esc(t.item)}</td><td>${fmt(t.quantity)}</td><td>${fmt(t.money)}</td>
+      <td>${esc(t.other_name || t.other_id)}</td></tr>`).join("")
+      : `<tr><td colspan="6" class="empty">Nema nedavnih transakcija.</td></tr>`;
+  } catch { $("d-meta").textContent = "Greška pri učitavanju igrača."; }
+});
+$("d-close").onclick = () => $("dlg").close();
+$("dlg").addEventListener("click", (e) => { if (e.target === $("dlg")) $("dlg").close(); });
+
+async function loadStatus() {
+  try {
+    const s = await api("/api/status");
+    const errs = Object.values(s.errors || {});
+    $("status").innerHTML =
+      `Pohranjeno transakcija: <b>${fmt(s.transactions)}</b> · igrača: <b>${fmt(s.players)}</b> · ` +
+      (s.backfill_done ? "povijest potpuno učitana" : "učitavanje povijesti je u tijeku…") +
+      (s.last_run ? ` · zadnje osvježenje: <b>${new Date(s.last_run).toLocaleTimeString("hr-HR")}</b>` : "") +
+      (errs.length ? `<br><span class="err">${esc(errs.join(" | "))}</span>` : "");
+  } catch {}
+}
+
+loadFilters().catch(() => {});
+reload();
+loadStatus();
+setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>

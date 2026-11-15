@@ -1,0 +1,15 @@
+{
+  "name": "warera-market",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute warera-market --remote --file=schema.sql",
+    "db:init:local": "wrangler d1 execute warera-market --local --file=schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

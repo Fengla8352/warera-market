@@ -1,0 +1,22 @@
+name = "warera-market"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+# Frontend (public/) se servira kao statički asseti; /api/* obrađuje Worker
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "warera-market"
+database_id = "78b7b8c5-5ac8-4031-80e5-2857cc4a1088"
+
+# Prikupljanje transakcija svake minute
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# Koliko API stranica (po 100 transakcija) Worker povuče u jednom cron pozivu.
+# Free plan ima limit od 50 subrequestova po pozivu, pa ostavi <= 30.
+PAGE_BUDGET = "25"
