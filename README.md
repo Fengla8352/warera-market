@@ -46,3 +46,5 @@ Otvori `/api/status` (isti podaci su ispod tablice na stranici).
 - **Cijela povijest može biti velika.** Svaka transakcija znači nekoliko upisa u D1 (redak + dva ažuriranja statistike). Free plan dopušta 100 000 upisanih redaka dnevno, što je za pun backfill premalo; za cijelu povijest računaj na Workers Paid plan. Do tada backfill jednostavno napreduje koliko dopusti limit.
 - API ima limit od 500 zahtjeva/min s ključem. `PAGE_BUDGET` u `wrangler.toml` (zadano 25 stranica po 100 transakcija u minuti) određuje koliko brzo ide backfill.
 - Rang lista po "Kupljeni itemi" ima indeks; ostala sortiranja skeniraju tablicu i sporija su kad igrača bude puno.
+
+- ....
