@@ -149,8 +149,11 @@ async function refreshStatic(env, meta) {
 /* Transakcije: forward sync (novo) + backfill (cijela povijest)       */
 /* ------------------------------------------------------------------ */
 
+// "trading" = tržište resursa (Food, Ammo, Construction, Cases...); "itemMarket" = oprema/oružje
+const txType = (env) => env.TX_TYPE || "trading";
+
 async function fetchPage(env, cursor) {
-  const input = { limit: 100, transactionType: "itemMarket" };
+  const input = { limit: 100, transactionType: txType(env) };
   if (cursor) input.cursor = cursor;
   const data = await trpc(env, "transaction.getPaginatedTransactions", input);
   // dijagnostika: što API zapravo vraća (prva stranica i zadnja dohvaćena stranica)
@@ -178,7 +181,7 @@ async function fetchPage(env, cursor) {
 async function storePage(env, items) {
   const stmts = [];
   for (const t of items) {
-    if (t.transactionType && t.transactionType !== "itemMarket") continue;
+    if (t.transactionType && t.transactionType !== txType(env)) continue;
     if (!t._id || !t.buyerId || !t.sellerId) continue;
     stmts.push(
       env.DB.prepare(
@@ -445,7 +448,7 @@ async function apiPlayer(env, id, ctx, request) {
     const data = await trpc(env, "transaction.getPaginatedTransactions", {
       limit: 50,
       userId: id,
-      transactionType: "itemMarket",
+      transactionType: txType(env),
     });
     const items = data?.items || [];
     const others = [...new Set(items.map((t) => (String(t.buyerId) === id ? t.sellerId : t.buyerId)).filter(Boolean))];
