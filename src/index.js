@@ -152,11 +152,12 @@ async function refreshStatic(env, meta) {
 // "trading" = tržište resursa (Food, Ammo, Construction, Cases...); "itemMarket" = oprema/oružje
 const txType = (env) => env.TX_TYPE || "trading";
 
-async function fetchPage(env, cursor) {
+async function fetchPage(env, cursor, countryId) {
   const input = { limit: 100, transactionType: txType(env) };
+  if (countryId) input.countryId = countryId;
   if (cursor) input.cursor = cursor;
   const data = await trpc(env, "transaction.getPaginatedTransactions", input);
-  // dijagnostika: što API zapravo vraća (prva stranica i zadnja dohvaćena stranica)
+  // dijagnostika: što API zapravo vraća (prva stranica i zadnja dohvaćena stranica po državi)
   try {
     const arr = data?.items || [];
     const info = {
@@ -168,13 +169,17 @@ async function fetchPage(env, cursor) {
       keys: data && typeof data === "object" ? Object.keys(data) : null,
       first: arr[0]?.createdAt ?? null,
       last: arr[arr.length - 1]?.createdAt ?? null,
+      sample: arr[0]
+        ? { buyerCountryId: arr[0].buyerCountryId ?? null, sellerCountryId: arr[0].sellerCountryId ?? null }
+        : null,
     };
-    await setMeta(env, cursor ? "dbg_last" : "dbg_first", JSON.stringify(info));
+    await setMeta(env, `dbg_${cursor ? "last" : "first"}${countryId ? "_" + countryId : ""}`, JSON.stringify(info));
   } catch {}
   return {
     items: data?.items || [],
     nextCursor: data?.nextCursor || null,
-    hasMore: Boolean(data?.hasMore),
+    // API ne vraća uvijek `hasMore`; tada je kraj samo kad nema nextCursor ili je stranica prazna
+    hasMore: (data?.items?.length ?? 0) > 0 && (data?.hasMore ?? Boolean(data?.nextCursor)),
   };
 }
 
@@ -205,10 +210,47 @@ const tsOf = (t) => new Date(t.createdAt).toISOString();
 const maxTs = (items) => items.reduce((m, t) => (tsOf(t) > m ? tsOf(t) : m), "");
 const minTs = (items) => items.reduce((m, t) => (m === null || tsOf(t) < m ? tsOf(t) : m), null);
 
+// Države koje pratimo (TRACKED_COUNTRIES = imena ili ID-ovi odvojeni zarezom). Prazno = sve države.
+async function trackedCountries(env) {
+  const list = (env.TRACKED_COUNTRIES || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (!list.length) return null;
+  const ids = [];
+  const missing = [];
+  for (const entry of list) {
+    const row = await env.DB.prepare("SELECT id FROM countries WHERE id = ? OR lower(name) = lower(?) LIMIT 1")
+      .bind(entry, entry)
+      .first();
+    if (row) ids.push(row.id);
+    else missing.push(entry);
+  }
+  return { ids, missing };
+}
+
 async function syncTransactions(env, meta, budget) {
+  const tracked = await trackedCountries(env);
+  let streams;
+  if (tracked === null) {
+    streams = [{ key: "", country: null }];
+  } else {
+    await setMeta(env, "err_tracked", tracked.missing.length ? `Države nisu pronađene: ${tracked.missing.join(", ")}` : null);
+    if (!tracked.ids.length) throw new Error("Nijedna država iz TRACKED_COUNTRIES nije pronađena u bazi");
+    streams = tracked.ids.map((id) => ({ key: `s:${id}:`, country: id }));
+  }
+  const share = Math.max(1, Math.floor(budget / streams.length));
+  for (const s of streams) await syncStream(env, meta, share, s);
+}
+
+// jedan tok transakcija (jedna država ili sve) sa svojim kursorima u meta tablici
+async function syncStream(env, meta, budget, stream) {
+  const K = (name) => stream.key + name;
+  const c = stream.country;
+
   // 1) prvo pokretanje: povuci najnoviju stranicu, zapamti "glavu" i kursor za backfill
-  if (!meta.head_ts && !meta.backfill_cursor && !meta.backfill_done) {
-    const page = await fetchPage(env, undefined);
+  if (!meta[K("head_ts")] && !meta[K("backfill_cursor")] && !meta[K("backfill_done")]) {
+    const page = await fetchPage(env, undefined, c);
     budget--;
     await storePage(env, page.items);
     if (page.items.length >= 2) {
@@ -216,48 +258,48 @@ async function syncTransactions(env, meta, budget) {
       const last = tsOf(page.items[page.items.length - 1]);
       await setMeta(env, "order", first >= last ? "newest-first" : "OLDEST-FIRST (provjeri sync logiku!)");
     }
-    await setMeta(env, "head_ts", maxTs(page.items) || new Date().toISOString());
-    if (page.hasMore && page.nextCursor) await setMeta(env, "backfill_cursor", page.nextCursor);
-    else await setMeta(env, "backfill_done", "1");
+    await setMeta(env, K("head_ts"), maxTs(page.items) || new Date().toISOString());
+    if (page.hasMore && page.nextCursor) await setMeta(env, K("backfill_cursor"), page.nextCursor);
+    else await setMeta(env, K("backfill_done"), "1");
     meta = await getMeta(env);
   }
 
   // 2) forward: dohvati sve novije od zadnje viđene transakcije
-  if (meta.head_ts) {
-    let cursor = meta.fwd_cursor || undefined;
-    let newHead = meta.fwd_new_head || meta.head_ts;
+  if (meta[K("head_ts")]) {
+    let cursor = meta[K("fwd_cursor")] || undefined;
+    let newHead = meta[K("fwd_new_head")] || meta[K("head_ts")];
     while (budget > 0) {
-      const page = await fetchPage(env, cursor);
+      const page = await fetchPage(env, cursor, c);
       budget--;
       await storePage(env, page.items);
       const top = maxTs(page.items);
       if (top > newHead) newHead = top;
       const oldest = minTs(page.items);
-      const reached = !page.items.length || (oldest !== null && oldest <= meta.head_ts) || !page.hasMore;
+      const reached = !page.items.length || (oldest !== null && oldest <= meta[K("head_ts")]) || !page.hasMore;
       if (reached) {
-        await setMeta(env, "head_ts", newHead);
-        await setMeta(env, "fwd_cursor", null);
-        await setMeta(env, "fwd_new_head", null);
+        await setMeta(env, K("head_ts"), newHead);
+        await setMeta(env, K("fwd_cursor"), null);
+        await setMeta(env, K("fwd_new_head"), null);
         break;
       }
       cursor = page.nextCursor;
-      await setMeta(env, "fwd_cursor", cursor);
-      await setMeta(env, "fwd_new_head", newHead);
+      await setMeta(env, K("fwd_cursor"), cursor);
+      await setMeta(env, K("fwd_new_head"), newHead);
     }
   }
 
   // 3) backfill: ostatak budžeta ide na povijest unatrag
-  let cursor = meta.backfill_cursor || null;
-  while (budget > 0 && cursor && !meta.backfill_done) {
-    const page = await fetchPage(env, cursor);
+  let cursor = meta[K("backfill_cursor")] || null;
+  while (budget > 0 && cursor && !meta[K("backfill_done")]) {
+    const page = await fetchPage(env, cursor, c);
     budget--;
     await storePage(env, page.items);
     if (page.hasMore && page.nextCursor) {
       cursor = page.nextCursor;
-      await setMeta(env, "backfill_cursor", cursor);
+      await setMeta(env, K("backfill_cursor"), cursor);
     } else {
-      await setMeta(env, "backfill_cursor", null);
-      await setMeta(env, "backfill_done", "1");
+      await setMeta(env, K("backfill_cursor"), null);
+      await setMeta(env, K("backfill_done"), "1");
       break;
     }
   }
@@ -379,6 +421,11 @@ async function apiRanking(env, url) {
 
   const where = [];
   const args = [];
+  const tracked = await trackedCountries(env);
+  if (tracked && tracked.ids.length) {
+    where.push(`p.country_id IN (${tracked.ids.map(() => "?").join(",")})`);
+    args.push(...tracked.ids);
+  }
   if (country) {
     where.push("p.country_id = ?");
     args.push(country);
@@ -411,15 +458,26 @@ async function apiRanking(env, url) {
 }
 
 async function apiFilters(env) {
+  const tracked = await trackedCountries(env);
+  const ids = tracked?.ids?.length ? tracked.ids : null;
+  const inList = ids ? ` AND c.id IN (${ids.map(() => "?").join(",")})` : "";
   const [countries, alliances] = await Promise.all([
     env.DB.prepare(
       "SELECT c.id, c.name, c.alliance_id FROM countries c " +
-        "WHERE EXISTS (SELECT 1 FROM players p WHERE p.country_id = c.id) ORDER BY c.name",
-    ).all(),
+        "WHERE EXISTS (SELECT 1 FROM players p WHERE p.country_id = c.id)" +
+        inList +
+        " ORDER BY c.name",
+    )
+      .bind(...(ids || []))
+      .all(),
     env.DB.prepare(
       "SELECT a.id, a.name FROM alliances a " +
-        "WHERE EXISTS (SELECT 1 FROM countries c WHERE c.alliance_id = a.id) ORDER BY a.name",
-    ).all(),
+        "WHERE EXISTS (SELECT 1 FROM countries c WHERE c.alliance_id = a.id" +
+        inList +
+        ") ORDER BY a.name",
+    )
+      .bind(...(ids || []))
+      .all(),
   ]);
   return json({ countries: countries.results, alliances: alliances.results }, 200, {
     "cache-control": "public, max-age=300",
@@ -484,6 +542,7 @@ async function apiPlayer(env, id, ctx, request) {
 }
 
 async function apiStatus(env) {
+  const trackedInfo = await trackedCountries(env);
   const [meta, tx, players, named, countries, mapped, alliances] = await Promise.all([
     getMeta(env),
     env.DB.prepare("SELECT MAX(rowid) AS n FROM transactions").first(),
@@ -501,8 +560,13 @@ async function apiStatus(env) {
       countries: countries?.n || 0,
       countries_in_alliance: mapped?.n || 0,
       alliances: alliances?.n || 0,
-      backfill_done: meta.backfill_done === "1",
-      newest_synced: meta.head_ts || null,
+      tracked: trackedInfo ? trackedInfo : "sve države",
+      backfill_done: trackedInfo
+        ? trackedInfo.ids.length > 0 && trackedInfo.ids.every((id) => meta[`s:${id}:backfill_done`] === "1")
+        : meta.backfill_done === "1",
+      newest_synced: trackedInfo
+        ? trackedInfo.ids.map((id) => meta[`s:${id}:head_ts`]).filter(Boolean).sort().pop() || null
+        : meta.head_ts || null,
       last_run: meta.last_run || null,
       last_tick: meta.last_tick || null,
       has_api_key: Boolean(env.WARERA_API_KEY),
