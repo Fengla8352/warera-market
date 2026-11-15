@@ -294,7 +294,22 @@ async function enrichPlayers(env, batches = 5) {
 /* ------------------------------------------------------------------ */
 
 async function runSync(env) {
-  if (!env.WARERA_API_KEY) return;
+  try {
+    await setMeta(env, "last_tick", new Date().toISOString());
+    if (!env.WARERA_API_KEY) {
+      await setMeta(env, "err_key", "WARERA_API_KEY nije postavljen u Workeru (secret nedostaje ili nije objavljen)");
+      return;
+    }
+    await setMeta(env, "err_key", null);
+    await runSyncInner(env);
+  } catch (e) {
+    try {
+      await setMeta(env, "err_run", `${new Date().toISOString()} ${e?.message || e}`);
+    } catch {}
+  }
+}
+
+async function runSyncInner(env) {
   let meta = await getMeta(env);
   if (Number(meta.lock_until || 0) > Date.now()) return;
   await setMeta(env, "lock_until", Date.now() + LOCK_MS);
@@ -471,6 +486,8 @@ async function apiStatus(env) {
       backfill_done: meta.backfill_done === "1",
       newest_synced: meta.head_ts || null,
       last_run: meta.last_run || null,
+      last_tick: meta.last_tick || null,
+      has_api_key: Boolean(env.WARERA_API_KEY),
       order: meta.order || null,
       errors: Object.fromEntries(Object.entries(meta).filter(([k]) => k.startsWith("err_"))),
     },
