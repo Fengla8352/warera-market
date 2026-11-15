@@ -20,3 +20,6 @@ crons = ["* * * * *"]
 # Koliko API stranica (po 100 transakcija) Worker povuče u jednom cron pozivu.
 # Free plan ima limit od 50 subrequestova po pozivu, pa ostavi <= 30.
 PAGE_BUDGET = "25"
+
+TRACKED_COUNTRIES = "Croatia,Cuba,Kyrgyzstan"
+TX_TYPE = "trading"
