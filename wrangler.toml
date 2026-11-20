@@ -22,7 +22,7 @@ crons = ["* * * * *"]
 PAGE_BUDGET = "25"
 
 # Pratimo samo ove države (imena kako se zovu u igri, odvojena zarezom). Prazno = sve države.
-TRACKED_COUNTRIES = "Croatia,Cuba,Kyrgyzstan"
+TRACKED_COUNTRIES = "Croatia,Cuba,Kyrgyzstan,Botswana"
 
 # "trading" = tržište resursa (hrana, municija, građevinski materijal...); "itemMarket" = oprema/oružje
 TX_TYPE = "trading"
