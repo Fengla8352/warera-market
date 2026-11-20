@@ -1,4 +1,4 @@
--- Sirove transakcije item marketa (dedupliciraju se po ID-u transakcije)
+-- Sirove transakcije (služe samo za deduplikaciju i okidač; dedupliciraju se po ID-u transakcije)
 CREATE TABLE IF NOT EXISTS transactions (
   id          TEXT PRIMARY KEY,
   created_at  TEXT NOT NULL,
@@ -9,36 +9,19 @@ CREATE TABLE IF NOT EXISTS transactions (
   money       REAL NOT NULL
 );
 
--- Agregirana statistika po igraču (puni se triggerom, samo za stvarno nove transakcije)
-CREATE TABLE IF NOT EXISTS player_stats (
-  user_id      TEXT PRIMARY KEY,
-  bought_qty   INTEGER NOT NULL DEFAULT 0,
-  bought_money REAL    NOT NULL DEFAULT 0,
-  bought_tx    INTEGER NOT NULL DEFAULT 0,
-  sold_qty     INTEGER NOT NULL DEFAULT 0,
-  sold_money   REAL    NOT NULL DEFAULT 0,
-  sold_tx      INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_stats_bought_qty ON player_stats(bought_qty DESC);
-
-CREATE TRIGGER IF NOT EXISTS trg_tx_stats AFTER INSERT ON transactions
-BEGIN
-  INSERT INTO player_stats (user_id, bought_qty, bought_money, bought_tx)
-  VALUES (NEW.buyer_id, NEW.quantity, NEW.money, 1)
-  ON CONFLICT(user_id) DO UPDATE SET
-    bought_qty   = bought_qty   + NEW.quantity,
-    bought_money = bought_money + NEW.money,
-    bought_tx    = bought_tx    + 1;
-
-  INSERT INTO player_stats (user_id, sold_qty, sold_money, sold_tx)
-  VALUES (NEW.seller_id, NEW.quantity, NEW.money, 1)
-  ON CONFLICT(user_id) DO UPDATE SET
-    sold_qty   = sold_qty   + NEW.quantity,
-    sold_money = sold_money + NEW.money,
-    sold_tx    = sold_tx    + 1;
-END;
+-- Statistika po igraču, danu (UTC) i itemu. Puni se okidačem samo za stvarno nove transakcije.
+CREATE TABLE IF NOT EXISTS player_item_daily (
+  user_id     TEXT NOT NULL,
+  day         TEXT NOT NULL,
+  item_code   TEXT NOT NULL,
+  bought_qty  INTEGER NOT NULL DEFAULT 0,
+  sold_qty    INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, day, item_code)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_daily_day ON player_item_daily(day);
 
 -- Podaci o igračima (ime + država), dohvaćaju se iz user.getUserLite
+-- fetched_at = 0 znači "vidjeli smo igrača u transakciji, još nije dohvaćen"
 CREATE TABLE IF NOT EXISTS players (
   user_id    TEXT PRIMARY KEY,
   name       TEXT,
@@ -64,3 +47,17 @@ CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT
 );
+
+CREATE TRIGGER IF NOT EXISTS trg_tx_daily AFTER INSERT ON transactions
+BEGIN
+  INSERT OR IGNORE INTO players (user_id, fetched_at) VALUES (NEW.buyer_id, 0);
+  INSERT OR IGNORE INTO players (user_id, fetched_at) VALUES (NEW.seller_id, 0);
+
+  INSERT INTO player_item_daily (user_id, day, item_code, bought_qty, sold_qty)
+  VALUES (NEW.buyer_id, substr(NEW.created_at, 1, 10), COALESCE(NEW.item_code, '?'), NEW.quantity, 0)
+  ON CONFLICT(user_id, day, item_code) DO UPDATE SET bought_qty = bought_qty + NEW.quantity;
+
+  INSERT INTO player_item_daily (user_id, day, item_code, bought_qty, sold_qty)
+  VALUES (NEW.seller_id, substr(NEW.created_at, 1, 10), COALESCE(NEW.item_code, '?'), 0, NEW.quantity)
+  ON CONFLICT(user_id, day, item_code) DO UPDATE SET sold_qty = sold_qty + NEW.quantity;
+END;
