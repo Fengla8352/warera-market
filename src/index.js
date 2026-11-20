@@ -154,24 +154,22 @@ async function refreshStatic(env, meta) {
 // "trading" = tržište resursa (Food, Ammo, Construction, Cases...); "itemMarket" = oprema/oružje
 const txType = (env) => env.TX_TYPE || "trading";
 
-async function fetchPage(env, cursor, countryId) {
+async function fetchPage(env, cursor) {
   const input = { limit: 100, transactionType: txType(env) };
-  if (countryId) input.countryId = countryId;
   if (cursor) input.cursor = cursor;
   const data = await trpc(env, "transaction.getPaginatedTransactions", input);
+  const items = data?.items || [];
   return {
-    items: data?.items || [],
+    items,
     nextCursor: data?.nextCursor || null,
     // API ne vraća uvijek `hasMore`; tada je kraj samo kad nema nextCursor ili je stranica prazna
-    hasMore: (data?.items?.length ?? 0) > 0 && (data?.hasMore ?? Boolean(data?.nextCursor)),
+    hasMore: items.length > 0 && (data?.hasMore ?? Boolean(data?.nextCursor)),
   };
 }
 
 async function storePage(env, items) {
   const stmts = [];
   for (const t of items) {
-    if (t.transactionType && t.transactionType !== txType(env)) continue;
-    if (!t._id || !t.buyerId || !t.sellerId) continue;
     stmts.push(
       env.DB.prepare(
         "INSERT OR IGNORE INTO transactions (id, created_at, buyer_id, seller_id, item_code, quantity, money) " +
@@ -219,79 +217,167 @@ async function trackedCountries(env) {
   return val;
 }
 
-async function syncTransactions(env, meta, budget) {
-  const tracked = await trackedCountries(env);
-  let streams;
-  if (tracked === null) {
-    streams = [{ key: "", country: null }];
-  } else {
-    await setMeta(env, "err_tracked", tracked.missing.length ? `Države nisu pronađene: ${tracked.missing.join(", ")}` : null);
-    if (!tracked.ids.length) throw new Error("Nijedna država iz TRACKED_COUNTRIES nije pronađena u bazi");
-    streams = tracked.ids.map((id) => ({ key: `s:${id}:`, country: id }));
+/* --- država igrača: memorija -> D1 -> user.getUserLite --------------- */
+
+const PC = new Map(); // user_id -> country_id | null (poznato)
+
+async function knownCountries(env, ids) {
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const { results } = await env.DB.prepare(
+      `SELECT user_id, country_id FROM players WHERE fetched_at > 0 AND user_id IN (${chunk.map(() => "?").join(",")})`,
+    )
+      .bind(...chunk)
+      .all();
+    for (const r of results) PC.set(r.user_id, r.country_id ?? null);
   }
-  const share = Math.max(1, Math.floor(budget / streams.length));
-  for (const s of streams) await syncStream(env, meta, share, s);
 }
 
-// jedan tok transakcija (jedna država ili sve) sa svojim kursorima u meta tablici
-async function syncStream(env, meta, budget, stream) {
-  const K = (name) => stream.key + name;
-  const c = stream.country;
-
-  // 1) prvo pokretanje: povuci najnoviju stranicu, zapamti "glavu" i kursor za backfill
-  if (!meta[K("head_ts")] && !meta[K("backfill_cursor")] && !meta[K("backfill_done")]) {
-    const page = await fetchPage(env, undefined, c);
-    budget--;
-    await storePage(env, page.items);
-    if (page.items.length >= 2) {
-      const first = tsOf(page.items[0]);
-      const last = tsOf(page.items[page.items.length - 1]);
-      await setMeta(env, "order", first >= last ? "newest-first" : "OLDEST-FIRST (provjeri sync logiku!)");
-    }
-    await setMeta(env, K("head_ts"), maxTs(page.items) || new Date().toISOString());
-    if (page.hasMore && page.nextCursor) await setMeta(env, K("backfill_cursor"), page.nextCursor);
-    else await setMeta(env, K("backfill_done"), "1");
-    meta = await getMeta(env);
+// vraća true ako je država poznata za SVE navedene igrače (u granicama lookup budžeta)
+async function resolveCountries(env, ids, lookups) {
+  if (PC.size > 100_000) PC.clear();
+  const need = ids.filter((id) => !PC.has(id));
+  if (need.length) await knownCountries(env, need);
+  const unknown = ids.filter((id) => !PC.has(id));
+  while (unknown.length && lookups.left > 0) {
+    const chunk = unknown.splice(0, 50);
+    lookups.left--;
+    const users = await trpcBatch(env, "user.getUserLite", chunk.map((userId) => ({ userId })));
+    const now = Date.now();
+    const stmts = chunk.map((id, i) => {
+      const u = parseUser(users[i]);
+      PC.set(id, u?.country ?? null);
+      return env.DB.prepare(
+        "INSERT INTO players (user_id, name, country_id, fetched_at) VALUES (?, ?, ?, ?) " +
+          "ON CONFLICT(user_id) DO UPDATE SET name = COALESCE(excluded.name, name), " +
+          "country_id = COALESCE(excluded.country_id, country_id), fetched_at = excluded.fetched_at",
+      ).bind(id, u?.name ?? null, u?.country ?? null, now);
+    });
+    await env.DB.batch(stmts);
   }
+  return unknown.length === 0;
+}
 
-  // 2) forward: dohvati sve novije od zadnje viđene transakcije
-  if (meta[K("head_ts")]) {
-    let cursor = meta[K("fwd_cursor")] || undefined;
-    let newHead = meta[K("fwd_new_head")] || meta[K("head_ts")];
-    while (budget > 0) {
-      const page = await fetchPage(env, cursor, c);
-      budget--;
-      await storePage(env, page.items);
-      const top = maxTs(page.items);
-      if (top > newHead) newHead = top;
-      const oldest = minTs(page.items);
-      const reached = !page.items.length || (oldest !== null && oldest <= meta[K("head_ts")]) || !page.hasMore;
-      if (reached) {
-        await setMeta(env, K("head_ts"), newHead);
-        await setMeta(env, K("fwd_cursor"), null);
-        await setMeta(env, K("fwd_new_head"), null);
+// zadrži samo transakcije u kojima je kupac ILI prodavač iz praćene države; null = treba još lookupa
+async function keepTracked(env, items, trackedSet, lookups) {
+  const typed = items.filter(
+    (t) => t._id && t.buyerId && t.sellerId && (!t.transactionType || t.transactionType === txType(env)),
+  );
+  if (!trackedSet) return typed;
+  const ids = [...new Set(typed.flatMap((t) => [String(t.buyerId), String(t.sellerId)]))];
+  const ok = await resolveCountries(env, ids, lookups);
+  if (!ok) return null;
+  return typed.filter((t) => trackedSet.has(PC.get(String(t.buyerId))) || trackedSet.has(PC.get(String(t.sellerId))));
+}
+
+function setMetaMany(env, obj) {
+  const stmts = Object.entries(obj).map(([k, v]) =>
+    v === null || v === undefined || v === ""
+      ? env.DB.prepare("DELETE FROM meta WHERE key = ?").bind(k)
+      : env.DB.prepare(
+          "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        ).bind(k, String(v)),
+  );
+  return stmts.length ? env.DB.batch(stmts) : null;
+}
+
+/* --- globalni tok: forward (novo) + backfill (povijest unatrag) ------- */
+
+async function syncTransactions(env, meta, pages) {
+  const tracked = await trackedCountries(env);
+  let trackedSet = null;
+  if (tracked) {
+    await setMeta(env, "err_tracked", tracked.missing.length ? `Države nisu pronađene: ${tracked.missing.join(", ")}` : null);
+    if (!tracked.ids.length) throw new Error("Nijedna država iz TRACKED_COUNTRIES nije pronađena u bazi");
+    trackedSet = new Set(tracked.ids);
+  }
+  const lookups = { left: Math.max(1, Number(env.LOOKUP_BUDGET) || 10) };
+  const days = Number(env.HISTORY_DAYS);
+  const cutoff = days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString() : null;
+
+  const st = {
+    head: meta.g_head_ts || null,
+    fwdCursor: meta.g_fwd_cursor || null,
+    fwdHead: meta.g_fwd_new_head || null,
+    back: meta.g_back_cursor || null,
+    done: meta.g_back_done === "1",
+    oldest: meta.g_back_oldest || null,
+    order: meta.order || null,
+  };
+  let stalled = false;
+
+  try {
+    // 1) prvo pokretanje: najnovija stranica postaje "glava", kursor za povijest ide unatrag
+    if (!st.head) {
+      const page = await fetchPage(env, undefined);
+      pages--;
+      const kept = await keepTracked(env, page.items, trackedSet, lookups);
+      if (kept === null) return;
+      await storePage(env, kept);
+      if (page.items.length >= 2) {
+        const first = tsOf(page.items[0]);
+        const last = tsOf(page.items[page.items.length - 1]);
+        st.order = first >= last ? "newest-first" : "OLDEST-FIRST (provjeri sync logiku!)";
+      }
+      st.head = maxTs(page.items) || new Date().toISOString();
+      st.oldest = minTs(page.items);
+      if (page.hasMore && page.nextCursor) st.back = page.nextCursor;
+      else st.done = true;
+    }
+
+    // 2) forward: sve što je novije od zadnje viđene transakcije
+    while (pages > 0 && st.head) {
+      const page = await fetchPage(env, st.fwdCursor || undefined);
+      pages--;
+      const kept = await keepTracked(env, page.items, trackedSet, lookups);
+      if (kept === null) {
+        stalled = true; // iduću minutu ponovno ista stranica (igrači su u međuvremenu dopunjeni)
         break;
       }
-      cursor = page.nextCursor;
-      await setMeta(env, K("fwd_cursor"), cursor);
-      await setMeta(env, K("fwd_new_head"), newHead);
+      await storePage(env, kept);
+      const top = maxTs(page.items);
+      if (top > (st.fwdHead || "")) st.fwdHead = top;
+      const oldest = minTs(page.items);
+      const reached = !page.items.length || (oldest !== null && oldest <= st.head) || !page.hasMore;
+      if (reached) {
+        if (st.fwdHead && st.fwdHead > st.head) st.head = st.fwdHead;
+        st.fwdCursor = null;
+        st.fwdHead = null;
+        break;
+      }
+      st.fwdCursor = page.nextCursor;
     }
-  }
 
-  // 3) backfill: ostatak budžeta ide na povijest unatrag
-  let cursor = meta[K("backfill_cursor")] || null;
-  while (budget > 0 && cursor && !meta[K("backfill_done")]) {
-    const page = await fetchPage(env, cursor, c);
-    budget--;
-    await storePage(env, page.items);
-    if (page.hasMore && page.nextCursor) {
-      cursor = page.nextCursor;
-      await setMeta(env, K("backfill_cursor"), cursor);
-    } else {
-      await setMeta(env, K("backfill_cursor"), null);
-      await setMeta(env, K("backfill_done"), "1");
-      break;
+    // 3) povijest: ostatak budžeta ide unatrag do HISTORY_DAYS (0 = koliko god API čuva)
+    while (pages > 0 && st.back && !st.done && !stalled) {
+      const page = await fetchPage(env, st.back);
+      pages--;
+      const kept = await keepTracked(env, page.items, trackedSet, lookups);
+      if (kept === null) {
+        stalled = true;
+        break;
+      }
+      await storePage(env, kept);
+      const oldest = minTs(page.items);
+      if (oldest && (!st.oldest || oldest < st.oldest)) st.oldest = oldest;
+      const past = cutoff && oldest !== null && oldest < cutoff;
+      if (page.hasMore && page.nextCursor && !past) {
+        st.back = page.nextCursor;
+      } else {
+        st.back = null;
+        st.done = true;
+      }
     }
+  } finally {
+    await setMetaMany(env, {
+      g_head_ts: st.head,
+      g_fwd_cursor: st.fwdCursor,
+      g_fwd_new_head: st.fwdHead,
+      g_back_cursor: st.back,
+      g_back_done: st.done ? "1" : null,
+      g_back_oldest: st.oldest,
+      order: st.order,
+    });
   }
 }
 
@@ -308,7 +394,7 @@ function parseUser(u) {
   };
 }
 
-async function enrichPlayers(env, batches = 5) {
+async function enrichPlayers(env, batches = 2) {
   for (let b = 0; b < batches; b++) {
     // novi igrači (viđeni u transakciji, fetched_at = 0), najnoviji prvi
     const { results: fresh } = await env.DB.prepare(
@@ -562,38 +648,6 @@ async function apiPlayer(env, id, url, ctx, request) {
   return res;
 }
 
-// PRIVREMENO: dijagnostika jednog igrača, pita WarEra API izravno (obriši nakon uporabe)
-async function apiDebugUser(env, id) {
-  const short = (t) => ({
-    at: t.createdAt, type: t.transactionType, item: t.itemCode, qty: t.quantity,
-    buyerId: t.buyerId, sellerId: t.sellerId, buyerCountryId: t.buyerCountryId ?? null, sellerCountryId: t.sellerCountryId ?? null,
-  });
-  const probe = async (label, input) => {
-    try {
-      const d = await trpc(env, "transaction.getPaginatedTransactions", { limit: 5, ...input });
-      const items = d?.items || [];
-      return { label, n: items.length, has_next: Boolean(d?.nextCursor), sample: items.slice(0, 3).map(short) };
-    } catch (e) {
-      return { label, error: String(e?.message || e) };
-    }
-  };
-  const out = { id, profile: null, probes: [] };
-  try {
-    const u = await trpc(env, "user.getUserLite", { userId: id });
-    out.profile = { name: u?.username ?? u?.name ?? null, country_parsed: parseUser(u)?.country ?? null, raw_keys: u ? Object.keys(u) : null };
-  } catch (e) {
-    out.profile = { error: String(e?.message || e) };
-  }
-  out.probes.push(await probe("sve vrste, samo userId", { userId: id }));
-  out.probes.push(await probe("trading, userId", { userId: id, transactionType: "trading" }));
-  out.probes.push(await probe("itemMarket, userId", { userId: id, transactionType: "itemMarket" }));
-  const tracked = await trackedCountries(env);
-  for (const cid of tracked?.ids || []) {
-    out.probes.push(await probe(`trading, userId + countryId=${cid}`, { userId: id, transactionType: "trading", countryId: cid }));
-  }
-  return json(out, 200, { "cache-control": "no-store" });
-}
-
 async function apiStatus(env) {
   const trackedInfo = await trackedCountries(env);
   const [meta, tx, players, named, countries, mapped, alliances] = await Promise.all([
@@ -614,12 +668,9 @@ async function apiStatus(env) {
       countries_in_alliance: mapped?.n || 0,
       alliances: alliances?.n || 0,
       tracked: trackedInfo ? trackedInfo : "sve države",
-      backfill_done: trackedInfo
-        ? trackedInfo.ids.length > 0 && trackedInfo.ids.every((id) => meta[`s:${id}:backfill_done`] === "1")
-        : meta.backfill_done === "1",
-      newest_synced: trackedInfo
-        ? trackedInfo.ids.map((id) => meta[`s:${id}:head_ts`]).filter(Boolean).sort().pop() || null
-        : meta.head_ts || null,
+      backfill_done: meta.g_back_done === "1",
+      history_reached: meta.g_back_oldest || null,
+      newest_synced: meta.g_head_ts || null,
       last_run: meta.last_run || null,
       last_tick: meta.last_tick || null,
       has_api_key: Boolean(env.WARERA_API_KEY),
@@ -639,7 +690,6 @@ export default {
       if (path === "/api/ranking") return await apiRanking(env, url);
       if (path === "/api/filters") return await apiFilters(env);
       if (path === "/api/status") return await apiStatus(env);
-      if (path.startsWith("/api/debug/user/")) return await apiDebugUser(env, decodeURIComponent(path.slice("/api/debug/user/".length)));
       if (path.startsWith("/api/player/")) {
         return await apiPlayer(env, decodeURIComponent(path.slice("/api/player/".length)), url, ctx, request);
       }
