@@ -1,3 +1,5 @@
+import { ITEMS, ITEM_CODES } from "./items.js";
+
 const API = "https://api2.warera.io/trpc";
 const STATIC_REFRESH_MS = 60 * 60 * 1000; // države/savezi jednom na sat
 const PLAYER_REFRESH_MS = 3 * 24 * 60 * 60 * 1000; // osvježi igrače starije od 3 dana
@@ -157,24 +159,6 @@ async function fetchPage(env, cursor, countryId) {
   if (countryId) input.countryId = countryId;
   if (cursor) input.cursor = cursor;
   const data = await trpc(env, "transaction.getPaginatedTransactions", input);
-  // dijagnostika: što API zapravo vraća (prva stranica i zadnja dohvaćena stranica po državi)
-  try {
-    const arr = data?.items || [];
-    const info = {
-      at: new Date().toISOString(),
-      sent_cursor: cursor ?? null,
-      n: arr.length,
-      hasMore: data?.hasMore ?? null,
-      nextCursor: data?.nextCursor ?? null,
-      keys: data && typeof data === "object" ? Object.keys(data) : null,
-      first: arr[0]?.createdAt ?? null,
-      last: arr[arr.length - 1]?.createdAt ?? null,
-      sample: arr[0]
-        ? { buyerCountryId: arr[0].buyerCountryId ?? null, sellerCountryId: arr[0].sellerCountryId ?? null }
-        : null,
-    };
-    await setMeta(env, `dbg_${cursor ? "last" : "first"}${countryId ? "_" + countryId : ""}`, JSON.stringify(info));
-  } catch {}
   return {
     items: data?.items || [],
     nextCursor: data?.nextCursor || null,
@@ -211,12 +195,16 @@ const maxTs = (items) => items.reduce((m, t) => (tsOf(t) > m ? tsOf(t) : m), "")
 const minTs = (items) => items.reduce((m, t) => (m === null || tsOf(t) < m ? tsOf(t) : m), null);
 
 // Države koje pratimo (TRACKED_COUNTRIES = imena ili ID-ovi odvojeni zarezom). Prazno = sve države.
+let trackedMemo = { at: 0, key: "", val: null };
+
 async function trackedCountries(env) {
-  const list = (env.TRACKED_COUNTRIES || "")
+  const raw = env.TRACKED_COUNTRIES || "";
+  const list = raw
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
   if (!list.length) return null;
+  if (trackedMemo.key === raw && Date.now() - trackedMemo.at < 60_000) return trackedMemo.val;
   const ids = [];
   const missing = [];
   for (const entry of list) {
@@ -226,7 +214,9 @@ async function trackedCountries(env) {
     if (row) ids.push(row.id);
     else missing.push(entry);
   }
-  return { ids, missing };
+  const val = { ids, missing };
+  if (ids.length) trackedMemo = { at: Date.now(), key: raw, val };
+  return val;
 }
 
 async function syncTransactions(env, meta, budget) {
@@ -320,14 +310,14 @@ function parseUser(u) {
 
 async function enrichPlayers(env, batches = 5) {
   for (let b = 0; b < batches; b++) {
+    // novi igrači (viđeni u transakciji, fetched_at = 0), najnoviji prvi
     const { results: fresh } = await env.DB.prepare(
-      "SELECT s.user_id FROM player_stats s LEFT JOIN players p ON p.user_id = s.user_id " +
-        "WHERE p.user_id IS NULL ORDER BY s.bought_qty DESC LIMIT 50",
+      "SELECT user_id FROM players WHERE fetched_at = 0 LIMIT 50",
     ).all();
     let ids = fresh.map((r) => r.user_id);
     if (!ids.length) {
       const { results: stale } = await env.DB.prepare(
-        "SELECT user_id FROM players WHERE fetched_at < ? ORDER BY fetched_at LIMIT 50",
+        "SELECT user_id FROM players WHERE fetched_at > 0 AND fetched_at < ? ORDER BY fetched_at LIMIT 50",
       )
         .bind(Date.now() - PLAYER_REFRESH_MS)
         .all();
@@ -402,25 +392,54 @@ const json = (data, status = 200, extra = {}) =>
     headers: { "content-type": "application/json; charset=utf-8", ...extra },
   });
 
-const SORTS = {
-  bought_qty: "s.bought_qty",
-  bought_money: "s.bought_money",
-  sold_qty: "s.sold_qty",
-  sold_money: "s.sold_money",
-  tx: "(s.bought_tx + s.sold_tx)",
-};
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// items = popis kodova odvojen zarezom (prazno ili svi = bez filtra), from/to = YYYY-MM-DD (UTC)
+function parseFilters(url) {
+  const p = url.searchParams;
+  const items = [
+    ...new Set(
+      (p.get("items") || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter((c) => ITEM_CODES.has(c)),
+    ),
+  ];
+  return {
+    items: items.length && items.length < ITEM_CODES.size ? items : [],
+    from: DAY_RE.test(p.get("from") || "") ? p.get("from") : null,
+    to: DAY_RE.test(p.get("to") || "") ? p.get("to") : null,
+  };
+}
+
+function periodWhere(f, where, args, { withItems = true } = {}) {
+  if (f.from) {
+    where.push("d.day >= ?");
+    args.push(f.from);
+  }
+  if (f.to) {
+    where.push("d.day <= ?");
+    args.push(f.to);
+  }
+  if (withItems && f.items.length) {
+    where.push(`d.item_code IN (${f.items.map(() => "?").join(",")})`);
+    args.push(...f.items);
+  }
+}
 
 async function apiRanking(env, url) {
   const p = url.searchParams;
+  const f = parseFilters(url);
   const country = p.get("country");
   const alliance = p.get("alliance");
   const q = (p.get("q") || "").trim();
-  const sort = SORTS[p.get("sort")] || SORTS.bought_qty;
+  const sortCol = p.get("sort") === "sold" ? "sold" : "bought";
   const limit = Math.min(Math.max(Number(p.get("limit")) || 50, 1), 100);
   const offset = Math.max(Number(p.get("offset")) || 0, 0);
 
   const where = [];
   const args = [];
+  periodWhere(f, where, args);
   const tracked = await trackedCountries(env);
   if (tracked && tracked.ids.length) {
     where.push(`p.country_id IN (${tracked.ids.map(() => "?").join(",")})`);
@@ -435,19 +454,18 @@ async function apiRanking(env, url) {
     args.push(alliance);
   }
   if (q) {
-    where.push("(p.name LIKE ? ESCAPE '\\' OR s.user_id = ?)");
+    where.push("(p.name LIKE ? ESCAPE '\\' OR d.user_id = ?)");
     args.push(`%${q.replace(/[\\%_]/g, (m) => "\\" + m)}%`, q);
   }
 
   const sql =
-    "SELECT s.user_id, p.name, p.country_id, c.name AS country_name, c.alliance_id, a.name AS alliance_name, " +
-    "s.bought_qty, s.bought_money, s.bought_tx, s.sold_qty, s.sold_money, s.sold_tx " +
-    "FROM player_stats s " +
-    "LEFT JOIN players p ON p.user_id = s.user_id " +
+    "SELECT d.user_id, p.name, p.country_id, c.name AS country_name, " +
+    "SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold " +
+    "FROM player_item_daily d " +
+    "LEFT JOIN players p ON p.user_id = d.user_id " +
     "LEFT JOIN countries c ON c.id = p.country_id " +
-    "LEFT JOIN alliances a ON a.id = c.alliance_id " +
     (where.length ? "WHERE " + where.join(" AND ") + " " : "") +
-    `ORDER BY ${sort} DESC, s.user_id LIMIT ? OFFSET ?`;
+    `GROUP BY d.user_id ORDER BY ${sortCol} DESC, d.user_id LIMIT ? OFFSET ?`;
 
   const { results } = await env.DB.prepare(sql)
     .bind(...args, limit + 1, offset)
@@ -460,45 +478,49 @@ async function apiRanking(env, url) {
 async function apiFilters(env) {
   const tracked = await trackedCountries(env);
   const ids = tracked?.ids?.length ? tracked.ids : null;
-  const inList = ids ? ` AND c.id IN (${ids.map(() => "?").join(",")})` : "";
-  const [countries, alliances] = await Promise.all([
-    env.DB.prepare(
-      "SELECT c.id, c.name, c.alliance_id FROM countries c " +
-        "WHERE EXISTS (SELECT 1 FROM players p WHERE p.country_id = c.id)" +
-        inList +
-        " ORDER BY c.name",
-    )
-      .bind(...(ids || []))
-      .all(),
-    env.DB.prepare(
-      "SELECT a.id, a.name FROM alliances a " +
-        "WHERE EXISTS (SELECT 1 FROM countries c WHERE c.alliance_id = a.id" +
-        inList +
-        ") ORDER BY a.name",
-    )
-      .bind(...(ids || []))
-      .all(),
+  const [countries, days] = await Promise.all([
+    ids
+      ? env.DB.prepare(`SELECT id, name FROM countries WHERE id IN (${ids.map(() => "?").join(",")}) ORDER BY name`)
+          .bind(...ids)
+          .all()
+      : env.DB.prepare(
+          "SELECT c.id, c.name FROM countries c WHERE EXISTS (SELECT 1 FROM players p WHERE p.country_id = c.id) ORDER BY c.name",
+        ).all(),
+    env.DB.prepare("SELECT MIN(day) AS min, MAX(day) AS max FROM player_item_daily").first(),
   ]);
-  return json({ countries: countries.results, alliances: alliances.results }, 200, {
-    "cache-control": "public, max-age=300",
-  });
+  return json(
+    { items: ITEMS, countries: countries.results, days: { min: days?.min ?? null, max: days?.max ?? null } },
+    200,
+    { "cache-control": "public, max-age=120" },
+  );
 }
 
-async function apiPlayer(env, id, ctx, request) {
-  const cache = caches.default;
-  const cacheKey = new Request(new URL(`/__cache/player/${id}`, request.url).toString());
-  const hit = await cache.match(cacheKey);
-  if (hit) return hit;
+async function apiPlayer(env, id, url, ctx, request) {
+  const cache = typeof caches !== "undefined" ? caches.default : null;
+  const cacheKey = new Request(request.url);
+  if (cache) {
+    const hit = await cache.match(cacheKey);
+    if (hit) return hit;
+  }
 
-  const row = await env.DB.prepare(
-    "SELECT s.*, p.name, p.country_id, c.name AS country_name, a.name AS alliance_name " +
-      "FROM player_stats s LEFT JOIN players p ON p.user_id = s.user_id " +
-      "LEFT JOIN countries c ON c.id = p.country_id LEFT JOIN alliances a ON a.id = c.alliance_id " +
-      "WHERE s.user_id = ?",
+  const f = parseFilters(url);
+  const player = await env.DB.prepare(
+    "SELECT p.user_id, p.name, p.country_id, c.name AS country_name FROM players p " +
+      "LEFT JOIN countries c ON c.id = p.country_id WHERE p.user_id = ?",
   )
     .bind(id)
     .first();
-  if (!row) return json({ error: "Igrač nije pronađen" }, 404);
+  if (!player) return json({ error: "Igrač nije pronađen" }, 404);
+
+  const where = ["d.user_id = ?"];
+  const args = [id];
+  periodWhere(f, where, args, { withItems: false });
+  const { results: perItem } = await env.DB.prepare(
+    "SELECT d.item_code, SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold FROM player_item_daily d " +
+      `WHERE ${where.join(" AND ")} GROUP BY d.item_code ORDER BY bought DESC`,
+  )
+    .bind(...args)
+    .all();
 
   // zadnje transakcije igrača dohvaćamo uživo iz WarEra API-ja (ne spremamo ih po igraču)
   let recent = [];
@@ -527,7 +549,6 @@ async function apiPlayer(env, id, ctx, request) {
         side: bought ? "buy" : "sell",
         item: t.itemCode,
         quantity: t.quantity,
-        money: t.money,
         other_id: other,
         other_name: names.get(other) ?? null,
       };
@@ -536,8 +557,8 @@ async function apiPlayer(env, id, ctx, request) {
     recent = [];
   }
 
-  const res = json({ player: row, recent }, 200, { "cache-control": "public, max-age=60" });
-  ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  const res = json({ player, per_item: perItem, recent }, 200, { "cache-control": "public, max-age=60" });
+  if (cache) ctx.waitUntil(cache.put(cacheKey, res.clone()));
   return res;
 }
 
@@ -546,8 +567,8 @@ async function apiStatus(env) {
   const [meta, tx, players, named, countries, mapped, alliances] = await Promise.all([
     getMeta(env),
     env.DB.prepare("SELECT MAX(rowid) AS n FROM transactions").first(),
-    env.DB.prepare("SELECT MAX(rowid) AS n FROM player_stats").first(),
-    env.DB.prepare("SELECT MAX(rowid) AS n FROM players WHERE name IS NOT NULL").first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM players").first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM players WHERE name IS NOT NULL").first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM countries").first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM countries WHERE alliance_id IS NOT NULL").first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM alliances").first(),
@@ -572,17 +593,6 @@ async function apiStatus(env) {
       has_api_key: Boolean(env.WARERA_API_KEY),
       order: meta.order || null,
       errors: Object.fromEntries(Object.entries(meta).filter(([k]) => k.startsWith("err_"))),
-      debug: Object.fromEntries(
-        Object.entries(meta)
-          .filter(([k]) => k.startsWith("dbg_"))
-          .map(([k, v]) => {
-            try {
-              return [k, JSON.parse(v)];
-            } catch {
-              return [k, v];
-            }
-          }),
-      ),
     },
     200,
     { "cache-control": "public, max-age=15" },
@@ -598,7 +608,7 @@ export default {
       if (path === "/api/filters") return await apiFilters(env);
       if (path === "/api/status") return await apiStatus(env);
       if (path.startsWith("/api/player/")) {
-        return await apiPlayer(env, decodeURIComponent(path.slice("/api/player/".length)), ctx, request);
+        return await apiPlayer(env, decodeURIComponent(path.slice("/api/player/".length)), url, ctx, request);
       }
       if (path.startsWith("/api/")) return json({ error: "Not found" }, 404);
     } catch (e) {
