@@ -18,11 +18,18 @@ crons = ["* * * * *"]
 
 [vars]
 # Koliko API stranica (po 100 transakcija) Worker povuče u jednom cron pozivu.
-# Free plan ima limit od 50 subrequestova po pozivu, pa ostavi <= 30.
-PAGE_BUDGET = "25"
+# Uz 12 i 6 poziv ostaje ispod ograničenja besplatnog plana (50 upita po pozivu). Na plaćenom planu možeš povećati.
+PAGE_BUDGET = "12"
 
-# Pratimo samo ove države (imena kako se zovu u igri, odvojena zarezom). Prazno = sve države.
+# Koliko puta po cron pozivu smije pitati API za podatke o igračima (50 igrača po pozivu).
+LOOKUP_BUDGET = "6"
+
+# Pratimo transakcije u kojima je kupac ili prodavač iz ovih država (imena kako se zovu u igri).
+# Prazno = sve države.
 TRACKED_COUNTRIES = "Croatia,Cuba,Kyrgyzstan,Botswana"
+
+# Koliko dana povijesti učitati unatrag (0 = koliko god API čuva; to može biti jako puno podataka).
+HISTORY_DAYS = "30"
 
 # "trading" = tržište resursa (hrana, municija, građevinski materijal...); "itemMarket" = oprema/oružje
 TX_TYPE = "trading"
