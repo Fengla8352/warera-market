@@ -21,5 +21,8 @@ crons = ["* * * * *"]
 # Free plan ima limit od 50 subrequestova po pozivu, pa ostavi <= 30.
 PAGE_BUDGET = "25"
 
+# Pratimo samo ove države (imena kako se zovu u igri, odvojena zarezom). Prazno = sve države.
 TRACKED_COUNTRIES = "Croatia,Cuba,Kyrgyzstan"
+
+# "trading" = tržište resursa (hrana, municija, građevinski materijal...); "itemMarket" = oprema/oružje
 TX_TYPE = "trading"
