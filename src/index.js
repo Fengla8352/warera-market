@@ -562,6 +562,38 @@ async function apiPlayer(env, id, url, ctx, request) {
   return res;
 }
 
+// PRIVREMENO: dijagnostika jednog igrača, pita WarEra API izravno (obriši nakon uporabe)
+async function apiDebugUser(env, id) {
+  const short = (t) => ({
+    at: t.createdAt, type: t.transactionType, item: t.itemCode, qty: t.quantity,
+    buyerId: t.buyerId, sellerId: t.sellerId, buyerCountryId: t.buyerCountryId ?? null, sellerCountryId: t.sellerCountryId ?? null,
+  });
+  const probe = async (label, input) => {
+    try {
+      const d = await trpc(env, "transaction.getPaginatedTransactions", { limit: 5, ...input });
+      const items = d?.items || [];
+      return { label, n: items.length, has_next: Boolean(d?.nextCursor), sample: items.slice(0, 3).map(short) };
+    } catch (e) {
+      return { label, error: String(e?.message || e) };
+    }
+  };
+  const out = { id, profile: null, probes: [] };
+  try {
+    const u = await trpc(env, "user.getUserLite", { userId: id });
+    out.profile = { name: u?.username ?? u?.name ?? null, country_parsed: parseUser(u)?.country ?? null, raw_keys: u ? Object.keys(u) : null };
+  } catch (e) {
+    out.profile = { error: String(e?.message || e) };
+  }
+  out.probes.push(await probe("sve vrste, samo userId", { userId: id }));
+  out.probes.push(await probe("trading, userId", { userId: id, transactionType: "trading" }));
+  out.probes.push(await probe("itemMarket, userId", { userId: id, transactionType: "itemMarket" }));
+  const tracked = await trackedCountries(env);
+  for (const cid of tracked?.ids || []) {
+    out.probes.push(await probe(`trading, userId + countryId=${cid}`, { userId: id, transactionType: "trading", countryId: cid }));
+  }
+  return json(out, 200, { "cache-control": "no-store" });
+}
+
 async function apiStatus(env) {
   const trackedInfo = await trackedCountries(env);
   const [meta, tx, players, named, countries, mapped, alliances] = await Promise.all([
@@ -607,6 +639,7 @@ export default {
       if (path === "/api/ranking") return await apiRanking(env, url);
       if (path === "/api/filters") return await apiFilters(env);
       if (path === "/api/status") return await apiStatus(env);
+      if (path.startsWith("/api/debug/user/")) return await apiDebugUser(env, decodeURIComponent(path.slice("/api/debug/user/".length)));
       if (path.startsWith("/api/player/")) {
         return await apiPlayer(env, decodeURIComponent(path.slice("/api/player/".length)), url, ctx, request);
       }
