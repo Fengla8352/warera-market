@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS player_item_daily (
   item_code   TEXT NOT NULL,
   bought_qty  INTEGER NOT NULL DEFAULT 0,
   sold_qty    INTEGER NOT NULL DEFAULT 0,
+  bought_money REAL NOT NULL DEFAULT 0, -- potrošeno (novac u igri)
+  sold_money   REAL NOT NULL DEFAULT 0, -- zarađeno prodajom
   PRIMARY KEY (user_id, day, item_code)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_daily_day ON player_item_daily(day);
@@ -79,15 +81,15 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM tracked)
      OR EXISTS (SELECT 1 FROM player_country pc JOIN tracked t ON t.country_id = pc.country_id WHERE pc.user_id = NEW.seller_id);
 
-  INSERT INTO player_item_daily (user_id, day, item_code, bought_qty, sold_qty)
-  SELECT NEW.buyer_id, substr(NEW.created_at, 1, 10), COALESCE(NEW.item_code, '?'), NEW.quantity, 0
+  INSERT INTO player_item_daily (user_id, day, item_code, bought_qty, sold_qty, bought_money, sold_money)
+  SELECT NEW.buyer_id, substr(NEW.created_at, 1, 10), COALESCE(NEW.item_code, '?'), NEW.quantity, 0, NEW.money, 0
   WHERE NOT EXISTS (SELECT 1 FROM tracked)
      OR EXISTS (SELECT 1 FROM player_country pc JOIN tracked t ON t.country_id = pc.country_id WHERE pc.user_id = NEW.buyer_id)
-  ON CONFLICT(user_id, day, item_code) DO UPDATE SET bought_qty = bought_qty + NEW.quantity;
+  ON CONFLICT(user_id, day, item_code) DO UPDATE SET bought_qty = bought_qty + NEW.quantity, bought_money = bought_money + NEW.money;
 
-  INSERT INTO player_item_daily (user_id, day, item_code, bought_qty, sold_qty)
-  SELECT NEW.seller_id, substr(NEW.created_at, 1, 10), COALESCE(NEW.item_code, '?'), 0, NEW.quantity
+  INSERT INTO player_item_daily (user_id, day, item_code, bought_qty, sold_qty, bought_money, sold_money)
+  SELECT NEW.seller_id, substr(NEW.created_at, 1, 10), COALESCE(NEW.item_code, '?'), 0, NEW.quantity, 0, NEW.money
   WHERE NOT EXISTS (SELECT 1 FROM tracked)
      OR EXISTS (SELECT 1 FROM player_country pc JOIN tracked t ON t.country_id = pc.country_id WHERE pc.user_id = NEW.seller_id)
-  ON CONFLICT(user_id, day, item_code) DO UPDATE SET sold_qty = sold_qty + NEW.quantity;
+  ON CONFLICT(user_id, day, item_code) DO UPDATE SET sold_qty = sold_qty + NEW.quantity, sold_money = sold_money + NEW.money;
 END;

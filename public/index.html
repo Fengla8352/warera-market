@@ -57,12 +57,46 @@
   .select option { background: var(--panel); color: var(--text); }
   .date { flex: 0 0 188px; padding-left: 12px; gap: 8px; }
   .date .cal { display: grid; place-items: center; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; border-radius: 4px; }
-  .date .native { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
   .date input[aria-invalid=true] { color: var(--sell); }
   .date .lab { color: var(--muted); font-size: 13px; }
   .date input.txt { padding: 0 6px 0 0; height: 46px; min-width: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
   .date input.txt::placeholder { color: var(--muted); opacity: 1; }
   .spacer { flex: 1 1 0; min-width: 0; }
+  .field.date.active { border-color: var(--focus); }
+
+  /* kalendar */
+  .bar { position: relative; }
+  .cal-pop { position: absolute; z-index: 20; top: calc(100% + 6px); display: flex; background: var(--panel); color: var(--text-2); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px var(--shadow); overflow: hidden; }
+  .cal-pop[hidden] { display: none; }
+  .presets { display: flex; flex-direction: column; padding: 8px; gap: 2px; border-right: 1px solid var(--line); min-width: 150px; }
+  .presets button { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: none; border: 0; border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 14px; color: var(--text-2); cursor: pointer; text-align: left; }
+  .presets button:hover { background: var(--hover); }
+  .presets button[aria-pressed=true] { color: var(--text); font-weight: 700; }
+  .presets button[aria-pressed=true]::after { content: "✓"; color: var(--gold-text); font-weight: 700; }
+  .calbox { padding: 10px 12px 8px; width: 280px; }
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .cal-head b { color: var(--text); font-size: 15px; text-transform: capitalize; }
+  .cal-head button { background: none; border: 1px solid transparent; border-radius: 8px; width: 32px; height: 32px; font-size: 18px; color: var(--text-2); cursor: pointer; }
+  .cal-head button:hover:not(:disabled) { border-color: var(--line); background: var(--hover); }
+  .cal-head button:disabled { opacity: .3; cursor: default; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-grid .wd { text-align: center; font-size: 11px; font-weight: 600; color: var(--muted); padding: 4px 0; text-transform: uppercase; }
+  .cal-grid button { height: 34px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 14px; color: var(--text-2); cursor: pointer; font-variant-numeric: tabular-nums; }
+  .cal-grid button:hover:not(:disabled) { background: var(--hover); }
+  .cal-grid button:disabled { color: var(--muted); opacity: .35; cursor: default; }
+  .cal-grid button.in { background: var(--hl); border-radius: 0; }
+  .cal-grid button.today { box-shadow: inset 0 0 0 1px var(--line); }
+  .cal-grid button.sel { background: var(--gold); color: #11151c; font-weight: 700; }
+  .cal-foot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; font-size: 12px; color: var(--muted); }
+  .cal-foot button { background: none; border: 0; color: var(--focus); font: inherit; font-size: 13px; cursor: pointer; padding: 4px 6px; }
+  @media (max-width: 560px) {
+    .cal-pop { left: 0 !important; right: 0; flex-direction: column; }
+    .presets { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); min-width: 0; }
+    .presets button { padding: 6px 10px; border: 1px solid var(--line); }
+    .presets button[aria-pressed=true]::after { content: none; }
+    .presets button[aria-pressed=true] { border-color: var(--gold); }
+    .calbox { width: auto; }
+  }
   .theme { position: relative; width: 62px; height: 32px; padding: 0; border-radius: 16px; border: 1px solid var(--line); background: var(--panel); box-shadow: var(--elev); cursor: pointer; margin-left: auto; align-self: center; flex: none; }
   .theme::before { content: ""; box-sizing: border-box; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--hl); border: 1px solid var(--gold); transform: translateX(30px); }
   .theme[aria-checked=false]::before { transform: none; }
@@ -103,10 +137,14 @@
   th button { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
   th button:hover { color: var(--text); }
   th[aria-sort="descending"] button { color: var(--gold-text); }
+  td .sub { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+  td.num .sub { display: none; font-variant-numeric: tabular-nums; }
+  .money { font-variant-numeric: tabular-nums; }
   th[aria-sort="descending"] button::after { content: "↓"; }
   tbody tr { cursor: pointer; }
   tbody tr:hover { background: var(--hover); }
   td.name button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
+  td.name .sub { display: none; }
   td.main { color: var(--gold-text); font-weight: 700; }
   td.empty { padding: 36px; text-align: center; color: var(--muted); white-space: normal; }
   .card[aria-busy="true"] tbody { opacity: .55; }
@@ -124,7 +162,7 @@
   .dhead h2 { margin: 0; font-size: 20px; color: var(--text); }
   .dsub { color: var(--muted); font-size: 13px; margin-top: 2px; }
   .dhead button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font: inherit; cursor: pointer; }
-  .chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 10px 20px 14px; max-height: 30vh; overflow: auto; }
+  .chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr)); gap: 8px; padding: 10px 20px 14px; max-height: 30vh; overflow: auto; }
   .chip { display: flex; gap: 10px; align-items: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
   .chip .tile { --s: 34px !important; cursor: default; }
   .chip .tile { opacity: 1 !important; }
@@ -132,6 +170,20 @@
   .chip small { display: block; color: var(--muted); font-size: 11px; line-height: 1.3; }
   .chip span { font-variant-numeric: tabular-nums; font-size: 13px; }
   .dbody { max-height: 34vh; overflow: auto; border-top: 1px solid var(--line); }
+  .chart { position: relative; padding: 4px 20px 12px; }
+  .chart-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .legend > span { white-space: nowrap; }
+  .xlab { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .chart svg { display: block; width: 100%; height: 132px; overflow: visible; }
+  .chart .base { stroke: var(--line); stroke-width: 1; }
+  .chart .hit { fill: transparent; cursor: default; }
+  .chart .hit:hover, .chart .hit:focus { fill: var(--hover); outline: none; }
+  .chart .b-buy { fill: var(--buy); } .chart .b-sell { fill: var(--sell); }
+  .tip { position: absolute; pointer-events: none; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12px; color: var(--text-2); box-shadow: 0 6px 18px var(--shadow); white-space: nowrap; z-index: 2; }
+  .tip b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .tip .k { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: 6px; }
   .dbody table { min-width: 0; }
   .dbody th, .dbody td { padding: 8px 14px; }
   .item-cell { display: inline-flex; align-items: center; gap: 8px; }
@@ -145,7 +197,9 @@
     th:first-child, td:first-child { padding-left: 12px; }
     th:last-child, td:last-child { padding-right: 12px; }
     td.name { white-space: normal; overflow-wrap: anywhere; }
-    td:nth-child(3) { white-space: normal; }
+    th.ctry, td.ctry, th.mny, td.mny { display: none; }
+    td.num .sub { display: block; }
+    td.name .sub { display: block; }
     th.rank, td.rank { width: 30px; }
     .field, .search, .select, .date { flex: 1 1 100%; }
     .date { flex: 1 1 calc(50% - 5px); }
@@ -169,17 +223,33 @@
     <div class="field date">
       <button type="button" class="cal" data-for="from" aria-label="Odaberi datum (od)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></button>
       <span class="lab">Od</span><input id="from" class="txt" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" aria-label="Od datuma (dd/mm/yyyy)">
-      <input id="from-p" class="native" type="date" tabindex="-1" aria-hidden="true">
     </div>
     <div class="field date">
       <button type="button" class="cal" data-for="to" aria-label="Odaberi datum (do)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></button>
       <span class="lab">Do</span><input id="to" class="txt" type="text" inputmode="numeric" autocomplete="off" placeholder="dd/mm/yyyy" maxlength="10" aria-label="Do datuma (dd/mm/yyyy)">
-      <input id="to-p" class="native" type="date" tabindex="-1" aria-hidden="true">
     </div>
     <button type="button" class="theme" id="theme" role="switch" aria-checked="true" aria-label="Tamni način">
       <svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
       <svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
     </button>
+    <div class="cal-pop" id="cal-pop" role="dialog" aria-label="Odabir razdoblja" hidden>
+      <div class="presets" id="presets">
+        <button type="button" data-p="today">Danas</button>
+        <button type="button" data-p="yesterday">Jučer</button>
+        <button type="button" data-p="7">Zadnjih 7 dana</button>
+        <button type="button" data-p="30">Zadnjih 30 dana</button>
+        <button type="button" data-p="all">Cijelo razdoblje</button>
+      </div>
+      <div class="calbox">
+        <div class="cal-head">
+          <button type="button" id="cal-prev" aria-label="Prethodni mjesec">‹</button>
+          <b id="cal-title"></b>
+          <button type="button" id="cal-next" aria-label="Sljedeći mjesec">›</button>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+        <div class="cal-foot"><span id="cal-hint"></span><button type="button" id="cal-clear">Očisti</button></div>
+      </div>
+    </div>
   </div>
 
   <div class="items-wrap" id="items" role="group" aria-label="Itemi koji se prate"></div>
@@ -188,11 +258,13 @@
   <div class="card" id="card" aria-busy="false"><div class="scroll">
     <table>
       <thead><tr>
-        <th class="rank">#</th><th>Igrač</th><th>Država</th>
-        <th class="num" id="th-bought" aria-sort="descending"><button type="button" data-sort="bought">Kupljeno</button></th>
-        <th class="num" id="th-sold" aria-sort="none"><button type="button" data-sort="sold">Prodano</button></th>
+        <th class="rank">#</th><th>Igrač</th><th class="ctry">Država</th>
+        <th class="num" aria-sort="descending"><button type="button" data-sort="bought" data-alt="spent">Kupljeno</button></th>
+        <th class="num mny" aria-sort="none"><button type="button" data-sort="spent">Potrošeno</button></th>
+        <th class="num" aria-sort="none"><button type="button" data-sort="sold" data-alt="earned">Prodano</button></th>
+        <th class="num mny" aria-sort="none"><button type="button" data-sort="earned">Zarađeno</button></th>
       </tr></thead>
-      <tbody id="rows"><tr><td colspan="5" class="empty">Učitavanje…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="7" class="empty">Učitavanje…</td></tr></tbody>
     </table>
   </div></div>
 
@@ -210,8 +282,9 @@
     <button type="button" id="d-close">Zatvori</button>
   </div>
   <div class="chips" id="d-chips"></div>
+  <div class="chart" id="d-chart"></div>
   <div class="dbody"><table>
-    <thead><tr><th>Vrijeme</th><th>Tip</th><th>Item</th><th class="num">Kol.</th><th>Protustranka</th></tr></thead>
+    <thead><tr><th>Vrijeme</th><th>Tip</th><th>Item</th><th class="num">Kol.</th><th class="num">Iznos</th><th>Protustranka</th></tr></thead>
     <tbody id="d-rows"></tbody>
   </table></div>
 </dialog>
@@ -248,7 +321,7 @@
     applyTheme(t); store.set("wm_theme", t);
   });
 
-  /* ---------- datumi (dd/mm/yyyy) ---------- */
+  /* ---------- datumi (dd/mm/yyyy, dani su UTC kao u bazi) ---------- */
   const pad = (n) => String(n).padStart(2, "0");
   const isoToHr = (iso) => (iso ? iso.split("-").reverse().join("/") : "");
   function hrToIso(v) {
@@ -263,25 +336,131 @@
     return d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
   };
   const dateIso = (id) => hrToIso($(id).value);
+  const validIso = (v) => (v && hrToIso(isoToHr(v)) === v ? v : "");
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+  const addDays = (iso, n) => new Date(Date.parse(iso + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10);
+  function setDates(from, to) {
+    $("from").value = isoToHr(from); $("to").value = isoToHr(to);
+    $("from").setAttribute("aria-invalid", "false"); $("to").setAttribute("aria-invalid", "false");
+  }
   for (const id of ["from", "to"]) {
-    const inp = $(id), nat = $(id + "-p");
+    const inp = $(id);
     inp.addEventListener("input", (e) => {
       const deleting = e.inputType && e.inputType.startsWith("delete");
       inp.value = deleting ? inp.value.replace(/[^\d/]/g, "").slice(0, 10) : maskDate(inp.value);
       const full = inp.value.length === 10;
       const iso = hrToIso(inp.value);
       inp.setAttribute("aria-invalid", String(full && !iso));
-      if (iso) nat.value = iso;
+      if (iso) { cal.month = iso.slice(0, 7); renderCal(); }
       if (!inp.value || iso) reload();
     });
-    nat.addEventListener("change", () => { inp.value = isoToHr(nat.value); inp.setAttribute("aria-invalid", "false"); reload(); });
+    inp.addEventListener("focus", () => openCal(id));
   }
-  for (const b of document.querySelectorAll(".date .cal")) {
-    b.onclick = () => {
-      const nat = $(b.dataset.for + "-p");
-      try { nat.showPicker(); } catch { nat.focus(); }
-    };
+  for (const b of document.querySelectorAll(".date .cal")) b.onclick = () => openCal(b.dataset.for, true);
+
+  /* ---------- kalendar ---------- */
+  const MONTHS = ["siječanj", "veljača", "ožujak", "travanj", "svibanj", "lipanj", "srpanj", "kolovoz", "rujan", "listopad", "studeni", "prosinac"];
+  const cal = { field: null, month: todayIso().slice(0, 7), min: null, max: null };
+  const pop = $("cal-pop");
+  function openCal(field, focusGrid) {
+    cal.field = field;
+    const v = dateIso(field) || (field === "to" && dateIso("from")) || todayIso();
+    cal.month = v.slice(0, 7);
+    for (const f of ["from", "to"]) $(f).closest(".field").classList.toggle("active", f === field);
+    const anchor = $(field).closest(".field");
+    pop.hidden = false;
+    // poravnaj ispod polja, ali unutar trake
+    const bar = pop.parentElement.getBoundingClientRect(), a = anchor.getBoundingClientRect();
+    pop.style.left = Math.max(0, Math.min(a.left - bar.left, bar.width - pop.offsetWidth)) + "px";
+    pop.style.top = (a.bottom - bar.top + 6) + "px";
+    renderCal();
+    if (focusGrid) (pop.querySelector(".cal-grid button.sel") || pop.querySelector(".cal-grid button:not(:disabled)"))?.focus();
   }
+  function closeCal() {
+    pop.hidden = true; cal.field = null;
+    for (const f of ["from", "to"]) $(f).closest(".field").classList.remove("active");
+  }
+  function activePreset() {
+    const f = dateIso("from"), t = dateIso("to"), td = todayIso();
+    if (!f && !t) return "all";
+    if (f === td && t === td) return "today";
+    if (f === addDays(td, -1) && t === addDays(td, -1)) return "yesterday";
+    if (t === td && f === addDays(td, -6)) return "7";
+    if (t === td && f === addDays(td, -29)) return "30";
+    return "";
+  }
+  function renderCal() {
+    const [y, m] = cal.month.split("-").map(Number);
+    $("cal-title").textContent = `${MONTHS[m - 1]} ${y}`;
+    const first = `${cal.month}-01`;
+    const lead = (new Date(first + "T00:00:00Z").getUTCDay() + 6) % 7; // ponedjeljak prvi
+    const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const f = dateIso("from"), t = dateIso("to"), td = todayIso();
+    const max = cal.max && cal.max > td ? cal.max : td;
+    let html = ["Pon", "Uto", "Sri", "Čet", "Pet", "Sub", "Ned"].map((d) => `<span class="wd">${d}</span>`).join("");
+    html += "<span></span>".repeat(lead);
+    for (let d = 1; d <= days; d++) {
+      const iso = `${cal.month}-${pad(d)}`;
+      const off = (cal.min && iso < cal.min) || iso > max;
+      const sel = iso === f || iso === t;
+      const inR = f && t && iso > f && iso < t;
+      html += `<button type="button" data-d="${iso}" class="${sel ? "sel" : ""} ${inR ? "in" : ""} ${iso === td ? "today" : ""}"` +
+        ` aria-label="${d}. ${MONTHS[m - 1]} ${y}" aria-pressed="${sel}" ${off ? "disabled" : ""}>${d}</button>`;
+    }
+    $("cal-grid").innerHTML = html;
+    $("cal-prev").disabled = Boolean(cal.min && first <= cal.min);
+    $("cal-next").disabled = addDays(`${cal.month}-${pad(days)}`, 1) > max;
+    $("cal-hint").textContent = cal.field === "to" ? "Odaberi završni dan" : "Odaberi početni dan";
+    const ap = activePreset();
+    for (const b of $("presets").children) b.setAttribute("aria-pressed", String(b.dataset.p === ap));
+  }
+  const shiftMonth = (n) => { const [y, m] = cal.month.split("-").map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); cal.month = d.toISOString().slice(0, 7); renderCal(); };
+  $("cal-prev").onclick = () => shiftMonth(-1);
+  $("cal-next").onclick = () => shiftMonth(1);
+  $("cal-grid").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-d]");
+    if (!b || b.disabled) return;
+    const d = b.dataset.d;
+    if (cal.field === "from") {
+      const t = dateIso("to");
+      setDates(d, t && t >= d ? t : "");
+      reload(); openCal("to"); $("to").focus({ preventScroll: true });
+    } else {
+      const f = dateIso("from");
+      if (f && d < f) setDates(d, f); else setDates(f, d);
+      reload(); closeCal();
+    }
+  });
+  $("cal-grid").addEventListener("keydown", (e) => {
+    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+    const b = e.target.closest("button[data-d]");
+    if (!step || !b) return;
+    e.preventDefault();
+    const n = addDays(b.dataset.d, step);
+    if (n.slice(0, 7) !== cal.month) { cal.month = n.slice(0, 7); renderCal(); }
+    const nb = $("cal-grid").querySelector(`button[data-d="${n}"]:not(:disabled)`);
+    if (nb) nb.focus();
+  });
+  $("presets").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-p]");
+    if (!b) return;
+    const td = todayIso(), p = b.dataset.p;
+    if (p === "all") setDates("", "");
+    else if (p === "today") setDates(td, td);
+    else if (p === "yesterday") setDates(addDays(td, -1), addDays(td, -1));
+    else setDates(addDays(td, -(Number(p) - 1)), td);
+    reload(); closeCal();
+  });
+  $("cal-clear").onclick = () => { setDates("", ""); reload(); renderCal(); };
+  document.addEventListener("pointerdown", (e) => {
+    if (!pop.hidden && !pop.contains(e.target) && !e.target.closest(".field.date")) closeCal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !pop.hidden) { const f = cal.field; closeCal(); $(f)?.focus({ preventScroll: true }); }
+  });
+  pop.addEventListener("focusout", (e) => {
+    if (!pop.hidden && e.relatedTarget && !pop.contains(e.relatedTarget) && !e.relatedTarget.closest(".field.date")) closeCal();
+  });
 
   /* ---------- itemi ---------- */
   const tile = (code, extra = "") => {
@@ -325,40 +504,73 @@
     return p;
   }
 
+  // filteri u adresi stranice: ?item=…&country=…&from=…&to=…&sort=…&q=… (link otvara isti prikaz)
+  const SORTS = ["bought", "spent", "sold", "earned"];
+  const urlIn = new URLSearchParams(location.search);
+  function writeUrl() {
+    const u = new URLSearchParams();
+    if (state.item) u.set("item", state.item);
+    if ($("country").value) u.set("country", $("country").value);
+    const f = dateIso("from"), t = dateIso("to");
+    if (f) u.set("from", f);
+    if (t) u.set("to", t);
+    if (state.sort !== "bought") u.set("sort", state.sort);
+    if ($("q").value.trim()) u.set("q", $("q").value.trim());
+    const qs = u.toString();
+    try { history.replaceState(null, "", qs ? "?" + qs : location.pathname); } catch {}
+  }
+
   async function loadFilters() {
     const f = await api("/api/filters");
     state.meta = new Map(f.items.map((m) => [m.code, m]));
     renderItems(f.items);
     for (const c of f.countries) $("country").insertAdjacentHTML("beforeend", `<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`);
-    if (f.days.min) $("from-p").min = $("to-p").min = f.days.min;
-    if (f.days.max) $("from-p").max = $("to-p").max = f.days.max;
+    if (urlIn.get("country")) $("country").value = urlIn.get("country");
+    cal.min = f.days.min || null; cal.max = f.days.max || null;
     if (!state.meta.has(state.item)) state.item = f.items[0] ? f.items[0].code : null;
     syncItems();
   }
 
   /* ---------- tablica ---------- */
+  const fmtM = (n) => Number(n || 0).toLocaleString("hr-HR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // na mobitelu su vidljiva samo dva stupca (količina, novac ispod); dodir mijenja sortiranje količina <-> novac
+  const narrow = window.matchMedia("(max-width: 560px)");
+  const LABEL = { bought: "Kupljeno", spent: "Potrošeno", sold: "Prodano", earned: "Zarađeno" };
+  function syncSortHeaders() {
+    for (const b of document.querySelectorAll("th button[data-sort]")) {
+      const active = b.dataset.sort === state.sort || (narrow.matches && b.dataset.alt === state.sort);
+      b.closest("th").setAttribute("aria-sort", active ? "descending" : "none");
+      if (b.dataset.alt) b.textContent = narrow.matches && b.dataset.alt === state.sort ? LABEL[b.dataset.alt] : LABEL[b.dataset.sort];
+    }
+  }
+  narrow.addEventListener?.("change", syncSortHeaders);
   async function load() {
     const my = ++state.seq;
+    writeUrl();
     const p = periodParams(new URLSearchParams({ limit: LIMIT, offset: state.offset, sort: state.sort }));
     if ($("q").value.trim()) p.set("q", $("q").value.trim());
     if ($("country").value) p.set("country", $("country").value);
     $("card").setAttribute("aria-busy", "true");
     let data;
     try { data = await api("/api/ranking?" + p); }
-    catch { if (my === state.seq) { $("rows").innerHTML = `<tr><td colspan="5" class="empty err">Greška pri dohvaćanju podataka.</td></tr>`; $("card").setAttribute("aria-busy", "false"); } return; }
+    catch { if (my === state.seq) { $("rows").innerHTML = `<tr><td colspan="7" class="empty err">Greška pri dohvaćanju podataka.</td></tr>`; $("card").setAttribute("aria-busy", "false"); } return; }
     if (my !== state.seq) return; // stigao je noviji zahtjev
     $("card").setAttribute("aria-busy", "false");
     const tb = $("rows");
+    const pair = { bought: "spent", sold: "earned" };
+    const cls = (k) => `num ${k === "spent" || k === "earned" ? "money mny" : ""} ${state.sort === k || (narrow.matches && pair[k] === state.sort) ? "main" : ""}`;
     if (!data.rows.length) {
-      tb.innerHTML = `<tr><td colspan="5" class="empty">Nema rezultata za odabrane filtere.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="7" class="empty">Nema rezultata za odabrane filtere.</td></tr>`;
     } else {
       tb.innerHTML = data.rows.map((r) => `
         <tr data-id="${esc(r.user_id)}">
           <td class="rank">${r.rank}</td>
-          <td class="name"><button type="button">${esc(r.name || r.user_id)}</button></td>
-          <td>${esc(r.country_name || "–")}</td>
-          <td class="num ${state.sort === "bought" ? "main" : ""}">${fmt(r.bought)}</td>
-          <td class="num ${state.sort === "sold" ? "main" : ""}">${fmt(r.sold)}</td>
+          <td class="name"><button type="button">${esc(r.name || r.user_id)}</button><span class="sub">${esc(r.country_name || "")}</span></td>
+          <td class="ctry">${esc(r.country_name || "–")}</td>
+          <td class="${cls("bought")}">${fmt(r.bought)}<span class="sub">${fmtM(r.spent)}</span></td>
+          <td class="${cls("spent")}">${fmtM(r.spent)}</td>
+          <td class="${cls("sold")}">${fmt(r.sold)}<span class="sub">${fmtM(r.earned)}</span></td>
+          <td class="${cls("earned")}">${fmtM(r.earned)}</td>
         </tr>`).join("");
     }
     $("prev").disabled = state.offset === 0;
@@ -375,39 +587,104 @@
   $("next").onclick = () => { state.offset += LIMIT; load(); window.scrollTo({ top: 0 }); };
   for (const b of document.querySelectorAll("th button[data-sort]")) {
     b.onclick = () => {
-      state.sort = b.dataset.sort;
-      $("th-bought").setAttribute("aria-sort", state.sort === "bought" ? "descending" : "none");
-      $("th-sold").setAttribute("aria-sort", state.sort === "sold" ? "descending" : "none");
-      reload();
+      // mobitel: drugi dodir na isti stupac prebacuje na novac i natrag
+      state.sort = narrow.matches && b.dataset.alt && state.sort === b.dataset.sort ? b.dataset.alt : b.dataset.sort;
+      syncSortHeaders(); reload();
     };
   }
 
   /* ---------- prozor igrača ---------- */
+  const svgEl = (tag, attrs) => { const el = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const k in attrs) el.setAttribute(k, attrs[k]); return el; };
+  // stupac sa zaobljenim krajem podatka, a ravnim uz osnovnu liniju
+  function barPath(x, w, y0, h, up) {
+    const r = Math.min(4, w / 2, h);
+    if (h <= 0) return "";
+    const y1 = up ? y0 - h : y0 + h, s = up ? 1 : -1;
+    return `M${x},${y0} V${y1 + s * r} Q${x},${y1} ${x + r},${y1} H${x + w - r} Q${x + w},${y1} ${x + w},${y1 + s * r} V${y0} Z`;
+  }
+  function renderChart(perDay, from, to) {
+    const box = $("d-chart");
+    box.textContent = "";
+    if (!perDay.length) return;
+    const byDay = new Map(perDay.map((d) => [d.day, d]));
+    let a = from || perDay[0].day, b = to || perDay[perDay.length - 1].day;
+    if (a > b) [a, b] = [b, a];
+    const days = [];
+    for (let d = a; d <= b && days.length < 120; d = addDays(d, 1)) days.push(byDay.get(d) || { day: d, bought: 0, sold: 0, spent: 0, earned: 0 });
+    const W = 700, H = 132, top = 4, bottom = 0, mid = top + (H - top - bottom) / 2, half = (H - top - bottom) / 2 - 2;
+    const max = Math.max(1, ...days.map((d) => Math.max(d.bought, d.sold)));
+    const slot = W / days.length, bw = Math.max(2, Math.min(18, slot - 2));
+    const head = document.createElement("div");
+    head.className = "chart-head";
+    head.innerHTML = `<span>Promet po danima (UTC) · najviše ${fmt(max)} kom/dan</span>` +
+      `<span class="legend"><span><i style="background:var(--buy)"></i>Kupljeno (gore)</span><span><i style="background:var(--sell)"></i>Prodano (dolje)</span></span>`;
+    box.append(head);
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", role: "img", "aria-label": "Graf prometa po danima" });
+    svg.append(svgEl("line", { x1: 0, x2: W, y1: mid, y2: mid, class: "base" }));
+    const tip = document.createElement("div");
+    tip.className = "tip"; tip.hidden = true;
+    days.forEach((d, i) => {
+      const x = i * slot + (slot - bw) / 2;
+      const hit = svgEl("rect", { x: i * slot, y: 0, width: slot, height: H - bottom, class: "hit", tabindex: "0" });
+      svg.append(hit);
+      const hb = (d.bought / max) * half, hs = (d.sold / max) * half;
+      if (hb > 0) svg.append(svgEl("path", { d: barPath(x, bw, mid - 1, Math.max(hb, 1.5), true), class: "b-buy", "pointer-events": "none" }));
+      if (hs > 0) svg.append(svgEl("path", { d: barPath(x, bw, mid + 1, Math.max(hs, 1.5), false), class: "b-sell", "pointer-events": "none" }));
+      const show = () => {
+        tip.textContent = "";
+        const t = document.createElement("div"); t.textContent = isoToHr(d.day); tip.append(t);
+        for (const [k, q, mny, col] of [["Kupljeno", d.bought, d.spent, "var(--buy)"], ["Prodano", d.sold, d.earned, "var(--sell)"]]) {
+          const row = document.createElement("div");
+          row.innerHTML = `<span class="k" style="background:${col}"></span>`;
+          const v = document.createElement("b"); v.textContent = `${fmt(q)} kom`; row.append(v, ` · ${fmtM(mny)} · ${k}`);
+          tip.append(row);
+        }
+        tip.hidden = false;
+        const bx = box.getBoundingClientRect(), hr = hit.getBoundingClientRect();
+        const left = hr.left - bx.left + hr.width / 2 - tip.offsetWidth / 2;
+        tip.style.left = Math.max(4, Math.min(left, bx.width - tip.offsetWidth - 4)) + "px";
+        tip.style.top = "26px";
+      };
+      hit.addEventListener("pointerenter", show); hit.addEventListener("focus", show);
+      hit.addEventListener("pointerleave", () => (tip.hidden = true)); hit.addEventListener("blur", () => (tip.hidden = true));
+    });
+    // oznake datuma (HTML, da se tekst ne rasteže sa SVG-om): prvi, srednji, zadnji
+    const xl = document.createElement("div");
+    xl.className = "xlab";
+    for (const i of [...new Set([0, Math.floor((days.length - 1) / 2), days.length - 1])]) {
+      const t = document.createElement("span"); t.textContent = isoToHr(days[i].day).slice(0, 5); xl.append(t);
+    }
+    box.append(svg, xl, tip);
+  }
+
   $("rows").addEventListener("click", async (e) => {
     const tr = e.target.closest("tr[data-id]");
     if (!tr) return;
-    $("d-name").textContent = tr.querySelector(".name").textContent;
+    $("d-name").textContent = tr.querySelector(".name button").textContent;
     $("d-meta").textContent = "Učitavanje…";
-    $("d-chips").innerHTML = ""; $("d-rows").innerHTML = "";
+    $("d-chips").innerHTML = ""; $("d-rows").innerHTML = ""; $("d-chart").textContent = "";
     $("dlg").showModal();
     try {
       const p = periodParams(new URLSearchParams());
-      const { player, per_item, recent, truncated } = await api("/api/player/" + encodeURIComponent(tr.dataset.id) + "?" + p);
+      const { player, per_item, per_day, recent, truncated } = await api("/api/player/" + encodeURIComponent(tr.dataset.id) + "?" + p);
       const fi = p.get("from"), ti = p.get("to");
       const period = fi || ti ? ` · ${isoToHr(fi) || "početak"} – ${isoToHr(ti) || "danas"}` : " · cijelo razdoblje";
       $("d-meta").textContent = (player.country_name || "ID " + player.user_id) + period;
       $("d-chips").innerHTML = per_item.length ? per_item.map((r) => {
         const m = state.meta.get(r.item_code);
+        const avgB = r.bought ? r.spent / r.bought : null, avgS = r.sold ? r.earned / r.sold : null;
         return `<div class="chip">${tile(r.item_code)}<div><small>${esc(m ? m.name : r.item_code)}</small>` +
-          `<span class="buy">K ${fmt(r.bought)}</span> <span class="sell">P ${fmt(r.sold)}</span></div></div>`;
+          `<span class="buy">K ${fmt(r.bought)}</span> · ${fmtM(r.spent)}` + (avgB ? ` <small>prosjek ${fmtM(avgB)}/kom</small>` : "") +
+          `<br><span class="sell">P ${fmt(r.sold)}</span> · ${fmtM(r.earned)}` + (avgS ? ` <small>prosjek ${fmtM(avgS)}/kom</small>` : "") + `</div></div>`;
       }).join("") : `<div class="dsub">Nema prometa u odabranom razdoblju.</div>`;
+      renderChart(per_day || [], fi, ti);
       $("d-rows").innerHTML = recent.length ? recent.map((t) => {
         const m = state.meta.get(t.item);
         return `<tr><td>${esc(fmtDT(t.at))}</td>` +
           `<td class="${t.side}">${t.side === "buy" ? "Kupnja" : "Prodaja"}</td>` +
           `<td><span class="item-cell">${tile(t.item)}${esc(m ? m.name : t.item)}</span></td>` +
-          `<td class="num">${fmt(t.quantity)}</td><td>${esc(t.other_name || t.other_id)}</td></tr>`;
-      }).join("") + (truncated ? `<tr><td colspan="5" class="empty">Prikazano zadnjih ${recent.length} transakcija.</td></tr>` : "") : `<tr><td colspan="5" class="empty">Nema transakcija u odabranom razdoblju.</td></tr>`;
+          `<td class="num">${fmt(t.quantity)}</td><td class="num money">${t.money == null ? "–" : fmtM(t.money)}</td><td>${esc(t.other_name || t.other_id)}</td></tr>`;
+      }).join("") + (truncated ? `<tr><td colspan="7" class="empty">Prikazano zadnjih ${recent.length} transakcija.</td></tr>` : "") : `<tr><td colspan="7" class="empty">Nema transakcija u odabranom razdoblju.</td></tr>`;
     } catch { $("d-meta").textContent = "Greška pri učitavanju igrača."; }
   });
   $("d-close").onclick = () => $("dlg").close();
@@ -427,7 +704,12 @@
   }
 
   /* ---------- start ---------- */
-  state.item = store.get("wm_item");
+  // adresa stranice ima prednost pred zapamćenim izborom
+  state.item = urlIn.get("item") || store.get("wm_item");
+  if (SORTS.includes(urlIn.get("sort"))) state.sort = urlIn.get("sort");
+  syncSortHeaders();
+  setDates(validIso(urlIn.get("from")), validIso(urlIn.get("to")));
+  if (urlIn.get("q")) $("q").value = urlIn.get("q");
   loadFilters().then(() => load()).catch(() => load());
   loadStatus();
   setInterval(loadStatus, 60000);

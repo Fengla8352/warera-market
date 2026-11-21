@@ -594,7 +594,8 @@ async function apiRanking(env, url) {
   const country = p.get("country");
   const alliance = p.get("alliance");
   const q = (p.get("q") || "").trim();
-  const sortCol = p.get("sort") === "sold" ? "sold" : "bought";
+  const SORTS = ["bought", "sold", "spent", "earned"];
+  const sortCol = SORTS.includes(p.get("sort")) ? p.get("sort") : "bought";
   const limit = Math.min(Math.max(Number(p.get("limit")) || 50, 1), 100);
   const offset = Math.max(Number(p.get("offset")) || 0, 0);
 
@@ -621,7 +622,8 @@ async function apiRanking(env, url) {
 
   const sql =
     "SELECT d.user_id, p.name, p.country_id, c.name AS country_name, " +
-    "SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold " +
+    "SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold, " +
+    "ROUND(SUM(d.bought_money), 3) AS spent, ROUND(SUM(d.sold_money), 3) AS earned " +
     "FROM player_item_daily d " +
     "LEFT JOIN players p ON p.user_id = d.user_id " +
     "LEFT JOIN countries c ON c.id = p.country_id " +
@@ -678,7 +680,7 @@ async function playerTransactions(env, id, f) {
       args.push(...f.items);
     }
     const { results } = await env.DB.prepare(
-      "SELECT id, created_at, buyer_id, seller_id, item_code, quantity FROM transactions " +
+      "SELECT id, created_at, buyer_id, seller_id, item_code, quantity, money FROM transactions " +
         `WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT ?`,
     )
       .bind(...args, PLAYER_TX_LIMIT + 1)
@@ -713,8 +715,17 @@ async function apiPlayer(env, id, url, ctx, request) {
   const args = [id];
   periodWhere(f, where, args);
   const { results: perItem } = await env.DB.prepare(
-    "SELECT d.item_code, SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold FROM player_item_daily d " +
+    "SELECT d.item_code, SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold, " +
+      "ROUND(SUM(d.bought_money), 3) AS spent, ROUND(SUM(d.sold_money), 3) AS earned FROM player_item_daily d " +
       `WHERE ${where.join(" AND ")} GROUP BY d.item_code ORDER BY bought DESC`,
+  )
+    .bind(...args)
+    .all();
+  // promet po danima (UTC) za graf u prozoru igrača, isti filter
+  const { results: perDay } = await env.DB.prepare(
+    "SELECT d.day, SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold, " +
+      "ROUND(SUM(d.bought_money), 3) AS spent, ROUND(SUM(d.sold_money), 3) AS earned FROM player_item_daily d " +
+      `WHERE ${where.join(" AND ")} GROUP BY d.day ORDER BY d.day`,
   )
     .bind(...args)
     .all();
@@ -738,12 +749,13 @@ async function apiPlayer(env, id, url, ctx, request) {
       side: r.side,
       item: r.item_code,
       quantity: r.quantity,
+      money: r.money,
       other_id: other,
       other_name: names.get(other) ?? null,
     };
   });
 
-  const res = json({ player, per_item: perItem, recent, truncated }, 200, { "cache-control": "public, max-age=60" });
+  const res = json({ player, per_item: perItem, per_day: perDay, recent, truncated }, 200, { "cache-control": "public, max-age=60" });
   if (cache) ctx.waitUntil(cache.put(cacheKey, res.clone()));
   return res;
 }
