@@ -4,6 +4,10 @@ const API = "https://api2.warera.io/trpc";
 const STATIC_REFRESH_MS = 60 * 60 * 1000; // države/savezi jednom na sat
 const PLAYER_REFRESH_MS = 3 * 24 * 60 * 60 * 1000; // osvježi igrače starije od 3 dana
 const LOCK_MS = 120 * 1000;
+// država igrača iz player_country vrijedi 14 dana, zatim se ponovno pita API (igrač je mogao promijeniti državu)
+const COUNTRY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+// osvježavanje imena praćenih igrača radi se svakih 10 minuta (ne treba svake minute)
+const STALE_EVERY_MS = 10 * 60 * 1000;
 
 /* ------------------------------------------------------------------ */
 /* API helperi                                                         */
@@ -218,6 +222,39 @@ async function trackedCountries(env) {
 }
 
 /* --- država igrača: memorija -> D1 -> user.getUserLite --------------- */
+// player_country: država (i ime) za SVE provjerene igrače, 1 redak bez indeksa (jeftin upis).
+// players: samo igrači iz praćenih država (imaju indekse za pretragu i rang listu).
+// tracked: ID-ovi praćenih država, okidač po njima odlučuje kome pisati dnevnu statistiku.
+
+// upiše popis praćenih država u tablicu tracked kad se promijeni (prazno = sve države)
+async function syncTrackedTable(env, meta, ids) {
+  const key = [...ids].sort().join(",");
+  if ((meta.tracked_ids ?? null) === key) return;
+  const stmts = [env.DB.prepare("DELETE FROM tracked")];
+  for (const id of ids) stmts.push(env.DB.prepare("INSERT OR IGNORE INTO tracked (country_id) VALUES (?)").bind(id));
+  stmts.push(
+    env.DB.prepare(
+      "INSERT INTO meta (key, value) VALUES ('tracked_ids', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).bind(key),
+  );
+  await env.DB.batch(stmts);
+}
+
+function upsertPlayerCountry(env, id, u, now) {
+  return env.DB.prepare(
+    "INSERT INTO player_country (user_id, country_id, name, fetched_at) VALUES (?, ?, ?, ?) " +
+      "ON CONFLICT(user_id) DO UPDATE SET country_id = excluded.country_id, " +
+      "name = COALESCE(excluded.name, name), fetched_at = excluded.fetched_at",
+  ).bind(id, u?.country ?? null, u?.name ?? null, now);
+}
+
+function upsertPlayer(env, id, u, now) {
+  return env.DB.prepare(
+    "INSERT INTO players (user_id, name, country_id, fetched_at) VALUES (?, ?, ?, ?) " +
+      "ON CONFLICT(user_id) DO UPDATE SET name = COALESCE(excluded.name, name), " +
+      "country_id = COALESCE(excluded.country_id, country_id), fetched_at = excluded.fetched_at",
+  ).bind(id, u?.name ?? null, u?.country ?? null, now);
+}
 
 const PC = new Map(); // user_id -> country_id | null (poznato)
 
@@ -225,16 +262,16 @@ async function knownCountries(env, ids) {
   for (let i = 0; i < ids.length; i += 90) {
     const chunk = ids.slice(i, i + 90);
     const { results } = await env.DB.prepare(
-      `SELECT user_id, country_id FROM players WHERE fetched_at > 0 AND user_id IN (${chunk.map(() => "?").join(",")})`,
+      `SELECT user_id, country_id FROM player_country WHERE fetched_at > ? AND user_id IN (${chunk.map(() => "?").join(",")})`,
     )
-      .bind(...chunk)
+      .bind(Date.now() - COUNTRY_TTL_MS, ...chunk)
       .all();
     for (const r of results) PC.set(r.user_id, r.country_id ?? null);
   }
 }
 
 // vraća true ako je država poznata za SVE navedene igrače (u granicama lookup budžeta)
-async function resolveCountries(env, ids, lookups) {
+async function resolveCountries(env, ids, lookups, trackedSet) {
   if (PC.size > 100_000) PC.clear();
   const need = ids.filter((id) => !PC.has(id));
   if (need.length) await knownCountries(env, need);
@@ -244,14 +281,13 @@ async function resolveCountries(env, ids, lookups) {
     lookups.left--;
     const users = await trpcBatch(env, "user.getUserLite", chunk.map((userId) => ({ userId })));
     const now = Date.now();
-    const stmts = chunk.map((id, i) => {
+    const stmts = [];
+    chunk.forEach((id, i) => {
       const u = parseUser(users[i]);
       PC.set(id, u?.country ?? null);
-      return env.DB.prepare(
-        "INSERT INTO players (user_id, name, country_id, fetched_at) VALUES (?, ?, ?, ?) " +
-          "ON CONFLICT(user_id) DO UPDATE SET name = COALESCE(excluded.name, name), " +
-          "country_id = COALESCE(excluded.country_id, country_id), fetched_at = excluded.fetched_at",
-      ).bind(id, u?.name ?? null, u?.country ?? null, now);
+      stmts.push(upsertPlayerCountry(env, id, u, now));
+      // puni redak (ime, indeksi) samo za igrače iz praćenih država
+      if (u?.country && trackedSet.has(u.country)) stmts.push(upsertPlayer(env, id, u, now));
     });
     await env.DB.batch(stmts);
   }
@@ -265,7 +301,7 @@ async function keepTracked(env, items, trackedSet, lookups) {
   );
   if (!trackedSet) return typed;
   const ids = [...new Set(typed.flatMap((t) => [String(t.buyerId), String(t.sellerId)]))];
-  const ok = await resolveCountries(env, ids, lookups);
+  const ok = await resolveCountries(env, ids, lookups, trackedSet);
   if (!ok) return null;
   return typed.filter((t) => trackedSet.has(PC.get(String(t.buyerId))) || trackedSet.has(PC.get(String(t.sellerId))));
 }
@@ -291,6 +327,7 @@ async function syncTransactions(env, meta, pages) {
     if (!tracked.ids.length) throw new Error("Nijedna država iz TRACKED_COUNTRIES nije pronađena u bazi");
     trackedSet = new Set(tracked.ids);
   }
+  await syncTrackedTable(env, meta, trackedSet ? [...trackedSet] : []);
   const lookups = { left: Math.max(1, Number(env.LOOKUP_BUDGET) || 10) };
   const days = Number(env.HISTORY_DAYS);
   const cutoff = days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString() : null;
@@ -398,32 +435,47 @@ function parseUser(u) {
   };
 }
 
-async function enrichPlayers(env, batches = 2) {
+async function enrichPlayers(env, meta, batches = 2) {
+  const tracked = await trackedCountries(env);
+  const ids0 = tracked?.ids?.length ? tracked.ids : null;
+  let staleChecked = false;
   for (let b = 0; b < batches; b++) {
-    // novi igrači (viđeni u transakciji, fetched_at = 0), najnoviji prvi
+    // novi igrači (okidač ih upisuje s fetched_at = 0)
     const { results: fresh } = await env.DB.prepare(
       "SELECT user_id FROM players WHERE fetched_at = 0 LIMIT 50",
     ).all();
     let ids = fresh.map((r) => r.user_id);
-    if (!ids.length) {
-      const { results: stale } = await env.DB.prepare(
-        "SELECT user_id FROM players WHERE fetched_at > 0 AND fetched_at < ? ORDER BY fetched_at LIMIT 50",
-      )
-        .bind(Date.now() - PLAYER_REFRESH_MS)
-        .all();
+    // osvježavanje starih: samo igrači iz praćenih država, najviše jednom u 10 minuta
+    if (!ids.length && !staleChecked && Date.now() - Number(meta.stale_at || 0) > STALE_EVERY_MS) {
+      staleChecked = true;
+      await setMeta(env, "stale_at", Date.now());
+      const cutoff = Date.now() - PLAYER_REFRESH_MS;
+      const { results: stale } = ids0
+        ? await env.DB.prepare(
+            `SELECT user_id FROM players WHERE country_id IN (${ids0.map(() => "?").join(",")}) ` +
+              "AND fetched_at > 0 AND fetched_at < ? ORDER BY fetched_at LIMIT 50",
+          )
+            .bind(...ids0, cutoff)
+            .all()
+        : await env.DB.prepare(
+            "SELECT user_id FROM players WHERE fetched_at > 0 AND fetched_at < ? ORDER BY fetched_at LIMIT 50",
+          )
+            .bind(cutoff)
+            .all();
       ids = stale.map((r) => r.user_id);
     }
     if (!ids.length) return;
 
     const users = await trpcBatch(env, "user.getUserLite", ids.map((userId) => ({ userId })));
     const now = Date.now();
-    const stmts = ids.map((id, i) => {
+    const stmts = [];
+    ids.forEach((id, i) => {
       const u = parseUser(users[i]);
-      return env.DB.prepare(
-        "INSERT INTO players (user_id, name, country_id, fetched_at) VALUES (?, ?, ?, ?) " +
-          "ON CONFLICT(user_id) DO UPDATE SET name = COALESCE(excluded.name, name), " +
-          "country_id = COALESCE(excluded.country_id, country_id), fetched_at = excluded.fetched_at",
-      ).bind(id, u?.name ?? null, u?.country ?? null, now);
+      stmts.push(upsertPlayer(env, id, u, now));
+      if (ids0) {
+        stmts.push(upsertPlayerCountry(env, id, u, now));
+        PC.set(id, u?.country ?? null);
+      }
     });
     await env.DB.batch(stmts);
   }
@@ -467,7 +519,7 @@ async function runSyncInner(env) {
   await step("static", () => refreshStatic(env, meta));
   meta = await getMeta(env);
   await step("tx", () => syncTransactions(env, meta, budget));
-  await step("players", () => enrichPlayers(env));
+  await step("players", () => enrichPlayers(env, meta));
   // jedan batch: zadnji prolaz, brisanje stare greške err_run i otključavanje
   await setMetaMany(env, { last_run: new Date().toISOString(), err_run: null, lock_until: null });
 }
@@ -660,12 +712,12 @@ async function apiPlayer(env, id, url, ctx, request) {
   const names = new Map();
   for (let i = 0; i < others.length; i += 90) {
     const chunk = others.slice(i, i + 90);
-    const { results } = await env.DB.prepare(
-      `SELECT user_id, name FROM players WHERE user_id IN (${chunk.map(() => "?").join(",")})`,
-    )
-      .bind(...chunk)
-      .all();
-    for (const r of results) names.set(r.user_id, r.name);
+    const ph = chunk.map(() => "?").join(",");
+    const [{ results: a }, { results: b }] = await env.DB.batch([
+      env.DB.prepare(`SELECT user_id, name FROM player_country WHERE user_id IN (${ph})`).bind(...chunk),
+      env.DB.prepare(`SELECT user_id, name FROM players WHERE user_id IN (${ph})`).bind(...chunk),
+    ]);
+    for (const r of [...a, ...b]) if (r.name) names.set(r.user_id, r.name);
   }
   const recent = rows.map((r) => {
     const other = r.side === "buy" ? r.seller_id : r.buyer_id;
