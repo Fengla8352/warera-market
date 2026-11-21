@@ -15,17 +15,20 @@
 <style>
   :root {
     --bg: #0f1218; --panel: #171c26; --panel-2: #1b202b; --line: #232a38;
-    --text: #ffffff; --text-2: #e6e9ef; --muted: #8b94a7; --gold: #ddbb00;
-    --buy: #4ade80; --sell: #f87171; --hl: #223049; --hover: #1c2230;
+    --text: #ffffff; --text-2: #e6e9ef; --muted: #8b94a7; --brand: #ddbb00;
+    /* naglasak (odabrano, klikabilno, stupac po kojem se rangira): svjetlija plava za tamnu pozadinu */
+    --gold: #7cb4ff;
+    --buy: #4ade80; --sell: #f87171; --hl: #1c2b48; --hover: #1c2230;
     --tile-top: #0f1819; --tile-line: rgba(255,255,255,.08);
     --focus: #4cc9f0; --shadow: rgba(0,0,0,.6);
-    --gold-text: var(--gold); --rank: var(--gold); --on-accent: #11151c; --accent-soft: var(--hover); --elev: none; --field-line: transparent; --thead: transparent;
+    --gold-text: var(--gold); --rank: var(--gold); --on-accent: #0b1220; --accent-soft: #24375c; --elev: none; --field-line: transparent; --thead: transparent;
     --t-gray: #23373b; --t-green: #0a3d28; --t-blue: #173065; --t-purple: #3b235f; --t-red: #581b1d; --t-olive: #353610;
   }
   :root[data-theme="light"] {
     --bg: #eef1f5; --panel: #ffffff; --panel-2: #f6f8fb; --line: #e2e6ed;
-    --text: #0f141c; --text-2: #1f2633; --muted: #5b6476; /* svijetla tema: plavi naglasak umjesto zlatnog */
-    --gold: #1d4ed8; --gold-text: #1d4ed8; --rank: #1d4ed8; --on-accent: #ffffff; --accent-soft: #c9d9ff;
+    --text: #0f141c; --text-2: #1f2633; --muted: #5b6476; 
+    /* svijetla tema: tamnija plava za naglasak, naslov ostaje zlatni */
+    --brand: #c08d00; --gold: #1d4ed8; --gold-text: #1d4ed8; --rank: #1d4ed8; --on-accent: #ffffff; --accent-soft: #c9d9ff;
     --buy: #15803d; --sell: #c62828; --hl: #e3ecff; --hover: #f7f9fc;
     --focus: #1d6fd8; --shadow: rgba(15,20,28,.35);
     --elev: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.07);
@@ -41,7 +44,7 @@
   .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 16px 56px; }
 
   h1.title { font: 400 34px/1.1 "Bowlby One", "Arial Black", Impact, sans-serif; margin: 0 0 18px; color: var(--text); letter-spacing: .2px; }
-  h1.title span { color: var(--gold); }
+  h1.title span { color: var(--brand); }
   @media (max-width: 560px) { h1.title { font-size: 26px; } }
 
   .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
