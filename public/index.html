@@ -55,8 +55,12 @@
   .select { flex: 0 0 190px; padding-right: 12px; }
   .select select { appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 6px; }
   .select option { background: var(--panel); color: var(--text); }
-  .date { flex: 0 0 188px; padding-left: 12px; gap: 8px; }
-  .date .cal { display: grid; place-items: center; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; border-radius: 4px; }
+  .date { flex: 0 0 196px; padding-left: 6px; gap: 6px; }
+  /* gumb kalendara: istaknut da se vidi da je klikabilan */
+  .date .cal { display: grid; place-items: center; width: 34px; height: 34px; flex: none; background: var(--hl); border: 1px solid var(--line); padding: 0; color: var(--gold-text); cursor: pointer; border-radius: 8px; transition: background .12s, border-color .12s; }
+  .date .cal svg { width: 18px; height: 18px; }
+  .date .cal:hover, .field.date.active .cal { border-color: var(--gold); background: var(--hover); }
+  :root[data-theme="light"] .date .cal:hover, :root[data-theme="light"] .field.date.active .cal { background: #ffe89a; }
   .date input[aria-invalid=true] { color: var(--sell); }
   .date .lab { color: var(--muted); font-size: 13px; }
   .date input.txt { padding: 0 6px 0 0; height: 46px; min-width: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
