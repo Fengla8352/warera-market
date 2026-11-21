@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS players (
 );
 CREATE INDEX IF NOT EXISTS idx_players_country ON players(country_id);
 CREATE INDEX IF NOT EXISTS idx_players_name ON players(name COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_players_fetched ON players(fetched_at);
 
 CREATE TABLE IF NOT EXISTS countries (
   id          TEXT PRIMARY KEY,

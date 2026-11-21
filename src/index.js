@@ -202,7 +202,7 @@ async function trackedCountries(env) {
     .map((x) => x.trim())
     .filter(Boolean);
   if (!list.length) return null;
-  if (trackedMemo.key === raw && Date.now() - trackedMemo.at < 60_000) return trackedMemo.val;
+  if (trackedMemo.key === raw && Date.now() - trackedMemo.at < 600_000) return trackedMemo.val;
   const ids = [];
   const missing = [];
   for (const entry of list) {
@@ -468,8 +468,8 @@ async function runSyncInner(env) {
   meta = await getMeta(env);
   await step("tx", () => syncTransactions(env, meta, budget));
   await step("players", () => enrichPlayers(env));
-  await setMeta(env, "last_run", new Date().toISOString());
-  await setMeta(env, "lock_until", null);
+  // jedan batch: zadnji prolaz, brisanje stare greške err_run i otključavanje
+  await setMetaMany(env, { last_run: new Date().toISOString(), err_run: null, lock_until: null });
 }
 
 /* ------------------------------------------------------------------ */
@@ -583,7 +583,9 @@ async function apiFilters(env) {
       : env.DB.prepare(
           "SELECT c.id, c.name FROM countries c WHERE EXISTS (SELECT 1 FROM players p WHERE p.country_id = c.id) ORDER BY c.name",
         ).all(),
-    env.DB.prepare("SELECT MIN(day) AS min, MAX(day) AS max FROM player_item_daily").first(),
+    env.DB.prepare(
+      "SELECT (SELECT MIN(day) FROM player_item_daily) AS min, (SELECT MAX(day) FROM player_item_daily) AS max",
+    ).first(),
   ]);
   return json(
     { items: ITEMS, countries: countries.results, days: { min: days?.min ?? null, max: days?.max ?? null } },
@@ -682,13 +684,26 @@ async function apiPlayer(env, id, url, ctx, request) {
   return res;
 }
 
-async function apiStatus(env) {
+async function apiStatus(env, ctx, request) {
+  const cache = typeof caches !== "undefined" ? caches.default : null;
+  const cacheKey = new Request(new URL("/api/status", request.url).toString());
+  if (cache) {
+    const hit = await cache.match(cacheKey);
+    if (hit) return hit;
+  }
+  const res = await apiStatusFresh(env);
+  if (cache) ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  return res;
+}
+
+async function apiStatusFresh(env) {
   const trackedInfo = await trackedCountries(env);
   const [meta, tx, players, named, countries, mapped, alliances] = await Promise.all([
     getMeta(env),
     env.DB.prepare("SELECT MAX(rowid) AS n FROM transactions").first(),
-    env.DB.prepare("SELECT COUNT(*) AS n FROM players").first(),
-    env.DB.prepare("SELECT COUNT(*) AS n FROM players WHERE name IS NOT NULL").first(),
+    // igrači se nikad ne brišu, pa je MAX(rowid) broj igrača; "s imenom" = već dohvaćeni (indeks na fetched_at)
+    env.DB.prepare("SELECT MAX(rowid) AS n FROM players").first(),
+    env.DB.prepare("SELECT (SELECT MAX(rowid) FROM players) - (SELECT COUNT(*) FROM players WHERE fetched_at = 0) AS n").first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM countries").first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM countries WHERE alliance_id IS NOT NULL").first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM alliances").first(),
@@ -712,7 +727,7 @@ async function apiStatus(env) {
       errors: Object.fromEntries(Object.entries(meta).filter(([k]) => k.startsWith("err_"))),
     },
     200,
-    { "cache-control": "public, max-age=15" },
+    { "cache-control": "public, max-age=60" },
   );
 }
 
@@ -723,7 +738,7 @@ export default {
     try {
       if (path === "/api/ranking") return await apiRanking(env, url);
       if (path === "/api/filters") return await apiFilters(env);
-      if (path === "/api/status") return await apiStatus(env);
+      if (path === "/api/status") return await apiStatus(env, ctx, request);
       if (path.startsWith("/api/player/")) {
         return await apiPlayer(env, decodeURIComponent(path.slice("/api/player/".length)), url, ctx, request);
       }

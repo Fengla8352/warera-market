@@ -422,7 +422,7 @@
   state.item = store.get("wm_item");
   loadFilters().then(() => load()).catch(() => load());
   loadStatus();
-  setInterval(loadStatus, 30000);
+  setInterval(loadStatus, 60000);
 })();
 </script>
 </body>
