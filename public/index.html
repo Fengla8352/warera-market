@@ -19,12 +19,12 @@
     --buy: #4ade80; --sell: #f87171; --hl: #223049; --hover: #1c2230;
     --tile-top: #0f1819; --tile-line: rgba(255,255,255,.08);
     --focus: #4cc9f0; --shadow: rgba(0,0,0,.6);
-    --gold-text: var(--gold); --elev: none; --field-line: transparent; --thead: transparent;
+    --gold-text: var(--gold); --rank: var(--gold); --elev: none; --field-line: transparent; --thead: transparent;
     --t-gray: #23373b; --t-green: #0a3d28; --t-blue: #173065; --t-purple: #3b235f; --t-red: #581b1d; --t-olive: #353610;
   }
   :root[data-theme="light"] {
     --bg: #eef1f5; --panel: #ffffff; --panel-2: #f6f8fb; --line: #e2e6ed;
-    --text: #0f141c; --text-2: #1f2633; --muted: #5b6476; --gold: #c08d00; --gold-text: #6e4b00;
+    --text: #0f141c; --text-2: #1f2633; --muted: #5b6476; --gold: #c08d00; --gold-text: #6e4b00; --rank: #1d4ed8;
     --buy: #15803d; --sell: #c62828; --hl: #fff3c4; --hover: #f7f9fc;
     --focus: #1d6fd8; --shadow: rgba(15,20,28,.35);
     --elev: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.07);
@@ -140,7 +140,7 @@
   td.rank, th.rank { width: 56px; color: var(--muted); font-variant-numeric: tabular-nums; }
   th button { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
   th button:hover { color: var(--text); }
-  th[aria-sort="descending"] button { color: var(--gold-text); }
+  th[aria-sort="descending"] button { color: var(--rank); }
   td .sub { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
   td.num .sub { display: none; font-variant-numeric: tabular-nums; }
   .money { font-variant-numeric: tabular-nums; }
@@ -149,7 +149,7 @@
   tbody tr:hover { background: var(--hover); }
   td.name button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
   td.name .sub { display: none; }
-  td.main { color: var(--gold-text); font-weight: 700; }
+  td.main { color: var(--rank); font-weight: 700; }
   td.empty { padding: 36px; text-align: center; color: var(--muted); white-space: normal; }
   .card[aria-busy="true"] tbody { opacity: .55; }
   .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 10px; color: var(--muted); font-size: 13px; }
