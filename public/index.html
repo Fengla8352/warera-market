@@ -412,7 +412,7 @@
       const errs = Object.values(s.errors || {});
       $("status").innerHTML =
         `Pohranjeno transakcija: <b>${fmt(s.transactions)}</b> · igrača: <b>${fmt(s.players)}</b> · ` +
-        (s.backfill_done ? "povijest potpuno učitana" : "učitavanje povijesti je u tijeku" + (s.history_reached ? " (do " + esc(fmtDT(s.history_reached).slice(0, 10)) + ")" : "") + "…") +
+        (s.backfill_done ? "povijest potpuno učitana" : "učitavanje povijesti je u tijeku" + (s.history_reached ? " (do " + esc(fmtDT(s.history_reached).slice(0, 10)) + ")" : "") + (s.history_paused ? ", danas pauzirano zbog dnevnog limita baze, nastavlja se u ponoć UTC" : "…")) +
         (s.last_run ? ` · zadnje osvježenje: <b>${esc(new Date(s.last_run).toLocaleTimeString("hr-HR"))}</b>` : "") +
         (errs.length ? `<br><span class="err">${esc(errs.join(" | "))}</span>` : "");
     } catch {}

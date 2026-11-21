@@ -171,6 +171,9 @@ async function fetchPage(env, cursor) {
   };
 }
 
+// zbroj upisanih redaka iz rezultata D1 batcha (uključuje okidač i indekse)
+const rowsWritten = (res) => (res || []).reduce((n, r) => n + (Number(r?.meta?.rows_written) || 0), 0);
+
 async function storePage(env, items) {
   const stmts = [];
   for (const t of items) {
@@ -189,7 +192,7 @@ async function storePage(env, items) {
       ),
     );
   }
-  if (stmts.length) await env.DB.batch(stmts);
+  return stmts.length ? rowsWritten(await env.DB.batch(stmts)) : 0;
 }
 
 const tsOf = (t) => new Date(t.createdAt).toISOString();
@@ -289,7 +292,7 @@ async function resolveCountries(env, ids, lookups, trackedSet) {
       // puni redak (ime, indeksi) samo za igrače iz praćenih država
       if (u?.country && trackedSet.has(u.country)) stmts.push(upsertPlayer(env, id, u, now));
     });
-    await env.DB.batch(stmts);
+    lookups.written = (lookups.written || 0) + rowsWritten(await env.DB.batch(stmts));
   }
   return unknown.length === 0;
 }
@@ -328,7 +331,14 @@ async function syncTransactions(env, meta, pages) {
     trackedSet = new Set(tracked.ids);
   }
   await syncTrackedTable(env, meta, trackedSet ? [...trackedSet] : []);
-  const lookups = { left: Math.max(1, Number(env.LOOKUP_BUDGET) || 10) };
+  const lookups = { left: Math.max(1, Number(env.LOOKUP_BUDGET) || 10), written: 0 };
+  // dnevni proračun upisa za povijest (besplatni D1: 100 000 upisanih redaka dnevno, UTC).
+  // Kad se potroši, povijest čeka iduću ponoć UTC, a nove transakcije se i dalje prate.
+  const today = new Date().toISOString().slice(0, 10);
+  const writeBase = meta.w_day === today ? Number(meta.w_rows) || 0 : 0;
+  const histLimit = Number(env.HISTORY_DAILY_WRITES) || 70000;
+  let stored = 0;
+  const writesToday = () => writeBase + stored + lookups.written;
   const days = Number(env.HISTORY_DAYS);
   const cutoff = days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString() : null;
 
@@ -350,7 +360,7 @@ async function syncTransactions(env, meta, pages) {
       pages--;
       const kept = await keepTracked(env, page.items, trackedSet, lookups);
       if (kept === null) return;
-      await storePage(env, kept);
+      stored += await storePage(env, kept);
       if (page.items.length >= 2) {
         const first = tsOf(page.items[0]);
         const last = tsOf(page.items[page.items.length - 1]);
@@ -371,7 +381,7 @@ async function syncTransactions(env, meta, pages) {
         stalled = true; // iduću minutu ponovno ista stranica (igrači su u međuvremenu dopunjeni)
         break;
       }
-      await storePage(env, kept);
+      stored += await storePage(env, kept);
       const top = maxTs(page.items);
       if (top > (st.fwdHead || "")) st.fwdHead = top;
       const oldest = minTs(page.items);
@@ -390,7 +400,7 @@ async function syncTransactions(env, meta, pages) {
       st.back = null;
       st.done = true;
     }
-    while (pages > 0 && st.back && !st.done && !stalled) {
+    while (pages > 0 && st.back && !st.done && !stalled && writesToday() < histLimit) {
       const page = await fetchPage(env, st.back);
       pages--;
       const kept = await keepTracked(env, page.items, trackedSet, lookups);
@@ -398,7 +408,7 @@ async function syncTransactions(env, meta, pages) {
         stalled = true;
         break;
       }
-      await storePage(env, kept);
+      stored += await storePage(env, kept);
       const oldest = minTs(page.items);
       if (oldest && (!st.oldest || oldest < st.oldest)) st.oldest = oldest;
       const past = cutoff && oldest !== null && oldest < cutoff;
@@ -418,6 +428,8 @@ async function syncTransactions(env, meta, pages) {
       g_back_done: st.done ? "1" : null,
       g_back_oldest: st.oldest,
       order: st.order,
+      w_day: today,
+      w_rows: writesToday(),
     });
   }
 }
@@ -771,6 +783,11 @@ async function apiStatusFresh(env) {
       tracked: trackedInfo ? trackedInfo : "sve države",
       backfill_done: meta.g_back_done === "1",
       history_reached: meta.g_back_oldest || null,
+      writes_today: meta.w_day === new Date().toISOString().slice(0, 10) ? Number(meta.w_rows) || 0 : 0,
+      history_paused:
+        meta.g_back_done !== "1" &&
+        meta.w_day === new Date().toISOString().slice(0, 10) &&
+        Number(meta.w_rows) >= (Number(env.HISTORY_DAILY_WRITES) || 70000),
       newest_synced: meta.g_head_ts || null,
       last_run: meta.last_run || null,
       last_tick: meta.last_tick || null,

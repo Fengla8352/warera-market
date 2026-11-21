@@ -28,6 +28,7 @@ Cloudflare Worker + D1 aplikacija koja prati trgovinu resursima u igri WarEra (t
 | `LOOKUP_BUDGET` | koliko puta po cron pozivu se pita API za podatke o igračima |
 | `TX_TYPE` | `trading` = resursi; `itemMarket` = oprema i oružje |
 | `PAGE_BUDGET` | koliko API stranica (po 100 transakcija) se povuče u jednom cron pozivu |
+| `HISTORY_DAILY_WRITES` | koliko upisanih redaka dnevno (UTC) smije potrošiti sinkronizacija prije nego učitavanje povijesti stane do iduće ponoći (zadano 70000; besplatni D1 dopušta 100 000) |
 
 Secret `WARERA_API_KEY` postavlja se u Workeru (Settings → Variables and Secrets), ne u kodu.
 

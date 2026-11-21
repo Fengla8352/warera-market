@@ -32,5 +32,9 @@ TRACKED_COUNTRIES = "Croatia,Cuba,Kyrgyzstan,Botswana"
 # 0 = koliko god API čuva (može biti jako puno podataka); -1 = bez povijesti, prati se samo ono što stigne nakon objave.
 HISTORY_DAYS = "30"
 
+# Koliko upisanih redaka dnevno (UTC) smije potrošiti sinkronizacija prije nego povijest stane do iduće ponoći.
+# Besplatni D1 dopušta 100 000; ostatak ostaje za nove transakcije i ostale upise, da praćenje uživo ne stane.
+HISTORY_DAILY_WRITES = "70000"
+
 # "trading" = tržište resursa (hrana, municija, građevinski materijal...); "itemMarket" = oprema/oružje
 TX_TYPE = "trading"
