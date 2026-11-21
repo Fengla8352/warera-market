@@ -9,6 +9,9 @@ CREATE TABLE IF NOT EXISTS transactions (
   money       REAL NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_tx_buyer  ON transactions(buyer_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tx_seller ON transactions(seller_id, created_at);
+
 -- Statistika po igraču, danu (UTC) i itemu. Puni se okidačem samo za stvarno nove transakcije.
 CREATE TABLE IF NOT EXISTS player_item_daily (
   user_id     TEXT NOT NULL,

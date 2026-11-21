@@ -28,7 +28,8 @@ LOOKUP_BUDGET = "6"
 # Prazno = sve države.
 TRACKED_COUNTRIES = "Croatia,Cuba,Kyrgyzstan,Botswana"
 
-# Koliko dana povijesti učitati unatrag (0 = koliko god API čuva; to može biti jako puno podataka).
+# Koliko dana povijesti učitati unatrag.
+# 0 = koliko god API čuva (može biti jako puno podataka); -1 = bez povijesti, prati se samo ono što stigne nakon objave.
 HISTORY_DAYS = "30"
 
 # "trading" = tržište resursa (hrana, municija, građevinski materijal...); "itemMarket" = oprema/oružje

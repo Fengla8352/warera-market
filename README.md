@@ -1,50 +1,47 @@
-# WarEra Market Ranking
+# WarEra Market Rankings
 
-Cloudflare Worker + D1 aplikacija koja prati transakcije item marketa u igri WarEra i prikazuje rang listu igrača po broju kupljenih itema. Filtriranje po državi i savezu, pretraga igrača, detalji igrača s nedavnim transakcijama.
+Cloudflare Worker + D1 aplikacija koja prati trgovinu resursima u igri WarEra (tržište "Trading": hrana, municija, građevinski materijali, caseovi, buffovi) i prikazuje rang listu igrača.
+
+## Što stranica radi
+
+- Tablica: **#, Igrač, Država, Kupljeno, Prodano** (količine itema). Klik na zaglavlje Kupljeno/Prodano mijenja sortiranje.
+- Red ikonica itema: klik uključuje/isključuje item. Bez odabira broje se svi itemi. Odabir se pamti u pregledniku.
+- Filteri: pretraga igrača, država, datum Od / Do (dani su u UTC).
+- Klik na igrača otvara pregled po itemima za odabrano razdoblje i zadnjih 50 transakcija (uživo iz WarEra API-ja).
+- Svijetla / tamna tema (pamti se u pregledniku).
 
 ## Kako radi
 
-- **Cron (svake minute)** povlači transakcije (`transaction.getPaginatedTransactions`, tip `itemMarket`):
-  - prvo pokretanje uzme najnoviju stranicu i zapamti "glavu",
-  - svaki sljedeći poziv povuče sve novije od glave (praćenje uživo),
-  - preostali budžet ide na **backfill** cijele povijesti unatrag (kursor se sprema, nastavlja se sam).
-- Transakcije se deduplicirajju po ID-u; statistika po igraču (`player_stats`) puni se SQL triggerom samo za stvarno nove retke, pa ponovno učitavanje ne kvari brojeve.
-- Imena i države igrača dohvaćaju se iz `user.getUserLite` (50 po zahtjevu), države i savezi jednom na sat.
-- Nedavne transakcije u detaljima igrača dohvaćaju se uživo iz API-ja (cache 60 s), ne spremaju se po igraču.
+- **Cron (svake minute)** povlači SVE transakcije tržišta resursa (`transaction.getPaginatedTransactions`, tip `trading`) i zadržava samo one u kojima je kupac ili prodavač igrač iz jedne od država u `TRACKED_COUNTRIES`.
+  Filter države na samom API-ju ne koristimo jer on ne hvata transakcije igrača (u transakcijama je polje države gotovo uvijek prazno).
+- Država svakog igrača dohvaća se iz `user.getUserLite` (50 igrača po zahtjevu) i pamti u tablici `players`.
+- Prvo se vuče sve novo (praćenje uživo), a ostatak budžeta ide na povijest unatrag do `HISTORY_DAYS` dana. Ako stranica sadrži igrače čija država još nije poznata, ista stranica se ponavlja idući put, pa se ništa ne preskače.
+- Tablica `transactions` služi za deduplikaciju. SQL okidač `trg_tx_daily` za svaku **novu** transakciju zbraja količine u `player_item_daily` (igrač, dan, item).
+- Rang lista prikazuje samo igrače iz praćenih država.
 
-## Deploy
+## Postavke (`wrangler.toml`)
 
-```bash
-cd warera-market
-npm install
+| Varijabla | Značenje |
+|---|---|
+| `TRACKED_COUNTRIES` | imena država odvojena zarezom (zadano `Croatia,Cuba,Kyrgyzstan`); prazno = sve države |
+| `HISTORY_DAYS` | koliko dana povijesti učitati unatrag (0 = koliko god API čuva, može biti jako puno) |
+| `LOOKUP_BUDGET` | koliko puta po cron pozivu se pita API za podatke o igračima |
+| `TX_TYPE` | `trading` = resursi; `itemMarket` = oprema i oružje |
+| `PAGE_BUDGET` | koliko API stranica (po 100 transakcija) se povuče u jednom cron pozivu |
 
-# 1) baza
-npx wrangler d1 create warera-market
-#    -> kopiraj database_id u wrangler.toml (database_id)
-npx wrangler d1 execute warera-market --remote --file=schema.sql
+Secret `WARERA_API_KEY` postavlja se u Workeru (Settings → Variables and Secrets), ne u kodu.
 
-# 2) API key kao secret (ne ide u kod)
-npx wrangler secret put WARERA_API_KEY
+## Objava
 
-# 3) objava
-npx wrangler deploy
-```
+1. **Migracija baze** (jednom, u D1 Consoleu): izvrši `migration.sql` (Dio 1, pa Dio 2 kao zasebnu naredbu). Briše spremljene transakcije i statistiku, koji se učitaju ponovo.
+2. Pushaj datoteke na GitHub (`src/`, `public/` uključujući `public/icons/`, `schema.sql`, `migration.sql`, `wrangler.toml`, `package.json`). Cloudflare sam objavi novu verziju; `wrangler.toml` ponovno spaja D1 bazu `DB` i cron.
+3. Provjeri `/api/status`: `has_api_key: true`, `errors` prazan, `tracked.missing` prazan i `transactions` raste.
 
-Ako ga hostaš kroz GitHub repo kao prijašnju aplikaciju, dovoljno je pushati ovaj direktorij i u Cloudflare Workers Builds povezati repo; secret i D1 binding postavi u dashboardu (Settings → Variables / Bindings).
+## Ikonice i boje
 
-Lokalno testiranje: `npm run db:init:local && npx wrangler dev --test-scheduled`, zatim `curl "http://localhost:8787/__scheduled"` za ručno pokretanje sync-a.
+Ikonice su u `public/icons/<kod>.webp`. Pozadina svake ikonice ima boju razine kao u igri (siva, zelena, plava, ljubičasta, crvena, maslinasta); razina i naziv svakog itema nalaze se u `src/items.js`.
 
-## Što provjeriti nakon prvog pokretanja
+## Ograničenja
 
-Otvori `/api/status` (isti podaci su ispod tablice na stranici).
-
-- `order` mora biti `newest-first`. Ako piše `OLDEST-FIRST`, API vraća transakcije obrnutim redoslijedom i sync logiku treba prilagoditi.
-- `errors` mora biti prazan. Moje poznavanje oblika odgovora za `user.getUserLite`, `country.getAllCountries` i `alliance.getManyPaginated` temelji se na dokumentaciji klijentskih biblioteka. Kod čita imena polja defenzivno (npr. `username`/`name`, `country`/`citizenship`), ali ako `players_with_names` ostane 0 ili `countries_in_alliance` ostane 0, pošalji mi jedan sirovi odgovor tog endpointa pa ću dotjerati parsiranje.
-
-## Ograničenja i troškovi
-
-- **Cijela povijest može biti velika.** Svaka transakcija znači nekoliko upisa u D1 (redak + dva ažuriranja statistike). Free plan dopušta 100 000 upisanih redaka dnevno, što je za pun backfill premalo; za cijelu povijest računaj na Workers Paid plan. Do tada backfill jednostavno napreduje koliko dopusti limit.
-- API ima limit od 500 zahtjeva/min s ključem. `PAGE_BUDGET` u `wrangler.toml` (zadano 25 stranica po 100 transakcija u minuti) određuje koliko brzo ide backfill.
-- Rang lista po "Kupljeni itemi" ima indeks; ostala sortiranja skeniraju tablicu i sporija su kad igrača bude puno.
-
-- ....
+- Svaka nova transakcija znači nekoliko upisa u D1 (redak, indeks i dva zbroja po igraču). Free plan dopušta 100 000 upisanih redaka dnevno; ako učitavanje povijesti prijeđe taj limit, staje do sljedećeg dana.
+- Rang lista zbraja dnevne retke za odabrano razdoblje, pa su vrlo široki rasponi s mnogo itema skuplji za čitanje iz baze.

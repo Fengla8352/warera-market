@@ -321,7 +321,7 @@ async function syncTransactions(env, meta, pages) {
       }
       st.head = maxTs(page.items) || new Date().toISOString();
       st.oldest = minTs(page.items);
-      if (page.hasMore && page.nextCursor) st.back = page.nextCursor;
+      if (page.hasMore && page.nextCursor && !(days < 0)) st.back = page.nextCursor;
       else st.done = true;
     }
 
@@ -348,7 +348,11 @@ async function syncTransactions(env, meta, pages) {
       st.fwdCursor = page.nextCursor;
     }
 
-    // 3) povijest: ostatak budžeta ide unatrag do HISTORY_DAYS (0 = koliko god API čuva)
+    // 3) povijest: ostatak budžeta ide unatrag do HISTORY_DAYS (0 = koliko god API čuva, -1 = bez povijesti)
+    if (days < 0 && !st.done) {
+      st.back = null;
+      st.done = true;
+    }
     while (pages > 0 && st.back && !st.done && !stalled) {
       const page = await fetchPage(env, st.back);
       pages--;
@@ -479,6 +483,13 @@ const json = (data, status = 200, extra = {}) =>
   });
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+// YYYY-MM-DD koji je stvarni kalendarski dan (npr. 2026-02-31 se odbija)
+const validDay = (x) => {
+  if (!DAY_RE.test(x || "")) return null;
+  const t = Date.parse(`${x}T00:00:00Z`);
+  return Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== x ? null : x;
+};
+const nextDay = (d) => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
 // items = popis kodova odvojen zarezom (prazno ili svi = bez filtra), from/to = YYYY-MM-DD (UTC)
 function parseFilters(url) {
@@ -493,8 +504,8 @@ function parseFilters(url) {
   ];
   return {
     items: items.length && items.length < ITEM_CODES.size ? items : [],
-    from: DAY_RE.test(p.get("from") || "") ? p.get("from") : null,
-    to: DAY_RE.test(p.get("to") || "") ? p.get("to") : null,
+    from: validDay(p.get("from")),
+    to: validDay(p.get("to")),
   };
 }
 
@@ -581,6 +592,40 @@ async function apiFilters(env) {
   );
 }
 
+const PLAYER_TX_LIMIT = 100;
+
+// transakcije igrača iz naše baze, uz isti filter datuma i itema kao rang lista (dani su UTC)
+async function playerTransactions(env, id, f) {
+  const side = async (col) => {
+    const where = [`${col} = ?`];
+    const args = [id];
+    if (f.from) {
+      where.push("created_at >= ?");
+      args.push(`${f.from}T00:00:00.000Z`);
+    }
+    if (f.to) {
+      where.push("created_at < ?");
+      args.push(`${nextDay(f.to)}T00:00:00.000Z`);
+    }
+    if (f.items.length) {
+      where.push(`item_code IN (${f.items.map(() => "?").join(",")})`);
+      args.push(...f.items);
+    }
+    const { results } = await env.DB.prepare(
+      "SELECT id, created_at, buyer_id, seller_id, item_code, quantity FROM transactions " +
+        `WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT ?`,
+    )
+      .bind(...args, PLAYER_TX_LIMIT + 1)
+      .all();
+    return results;
+  };
+  const [asBuyer, asSeller] = await Promise.all([side("buyer_id"), side("seller_id")]);
+  const all = [...asBuyer.map((r) => ({ ...r, side: "buy" })), ...asSeller.map((r) => ({ ...r, side: "sell" }))].sort(
+    (a, b) => (a.created_at === b.created_at ? (a.id < b.id ? 1 : -1) : a.created_at < b.created_at ? 1 : -1),
+  );
+  return { rows: all.slice(0, PLAYER_TX_LIMIT), truncated: all.length > PLAYER_TX_LIMIT };
+}
+
 async function apiPlayer(env, id, url, ctx, request) {
   const cache = typeof caches !== "undefined" ? caches.default : null;
   const cacheKey = new Request(request.url);
@@ -600,7 +645,7 @@ async function apiPlayer(env, id, url, ctx, request) {
 
   const where = ["d.user_id = ?"];
   const args = [id];
-  periodWhere(f, where, args, { withItems: false });
+  periodWhere(f, where, args);
   const { results: perItem } = await env.DB.prepare(
     "SELECT d.item_code, SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold FROM player_item_daily d " +
       `WHERE ${where.join(" AND ")} GROUP BY d.item_code ORDER BY bought DESC`,
@@ -608,42 +653,31 @@ async function apiPlayer(env, id, url, ctx, request) {
     .bind(...args)
     .all();
 
-  // zadnje transakcije igrača dohvaćamo uživo iz WarEra API-ja (ne spremamo ih po igraču)
-  let recent = [];
-  try {
-    const data = await trpc(env, "transaction.getPaginatedTransactions", {
-      limit: 50,
-      userId: id,
-      transactionType: txType(env),
-    });
-    const items = data?.items || [];
-    const others = [...new Set(items.map((t) => (String(t.buyerId) === id ? t.sellerId : t.buyerId)).filter(Boolean))];
-    const names = new Map();
-    if (others.length) {
-      const { results } = await env.DB.prepare(
-        `SELECT user_id, name FROM players WHERE user_id IN (${others.map(() => "?").join(",")})`,
-      )
-        .bind(...others.map(String))
-        .all();
-      for (const r of results) names.set(r.user_id, r.name);
-    }
-    recent = items.map((t) => {
-      const bought = String(t.buyerId) === id;
-      const other = String(bought ? t.sellerId : t.buyerId);
-      return {
-        at: t.createdAt,
-        side: bought ? "buy" : "sell",
-        item: t.itemCode,
-        quantity: t.quantity,
-        other_id: other,
-        other_name: names.get(other) ?? null,
-      };
-    });
-  } catch (e) {
-    recent = [];
+  const { rows, truncated } = await playerTransactions(env, id, f);
+  const others = [...new Set(rows.map((r) => (r.side === "buy" ? r.seller_id : r.buyer_id)))];
+  const names = new Map();
+  for (let i = 0; i < others.length; i += 90) {
+    const chunk = others.slice(i, i + 90);
+    const { results } = await env.DB.prepare(
+      `SELECT user_id, name FROM players WHERE user_id IN (${chunk.map(() => "?").join(",")})`,
+    )
+      .bind(...chunk)
+      .all();
+    for (const r of results) names.set(r.user_id, r.name);
   }
+  const recent = rows.map((r) => {
+    const other = r.side === "buy" ? r.seller_id : r.buyer_id;
+    return {
+      at: r.created_at,
+      side: r.side,
+      item: r.item_code,
+      quantity: r.quantity,
+      other_id: other,
+      other_name: names.get(other) ?? null,
+    };
+  });
 
-  const res = json({ player, per_item: perItem, recent }, 200, { "cache-control": "public, max-age=60" });
+  const res = json({ player, per_item: perItem, recent, truncated }, 200, { "cache-control": "public, max-age=60" });
   if (cache) ctx.waitUntil(cache.put(cacheKey, res.clone()));
   return res;
 }
