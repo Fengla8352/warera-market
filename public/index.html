@@ -243,9 +243,11 @@
   .prof { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 4px; vertical-align: -5px; border-radius: 6px; color: var(--muted); }
   .prof svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .prof:hover, .prof:focus-visible { color: var(--rank); background: var(--hover); }
-  .dprof { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 13px; color: var(--rank); text-decoration: none; }
-  .dprof:hover { text-decoration: underline; }
-  .dprof svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  /* ime igrača u prozoru je link na profil u igri */
+  .dname { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; }
+  .dname:hover .nm-t { text-decoration: underline; text-underline-offset: 3px; color: var(--rank); }
+  .dname svg { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .dname:hover svg { stroke: var(--rank); }
   td.main { color: var(--rank); font-weight: 700; }
   td.empty { padding: 36px; text-align: center; color: var(--muted); white-space: normal; }
   .card[aria-busy="true"] tbody { opacity: .55; }
@@ -407,8 +409,7 @@
 
 <dialog id="dlg" aria-labelledby="d-name">
   <div class="dhead">
-    <div><h2 id="d-name"></h2><div class="dsub" id="d-meta"></div>
-      <a class="dprof" id="d-prof" href="#" target="_blank" rel="noopener">Profil u igri <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a></div>
+    <div><h2 id="d-name"></h2><div class="dsub" id="d-meta"></div></div>
     <button type="button" id="d-close">Zatvori</button>
   </div>
   <div class="chips" id="d-chips"></div>
@@ -807,8 +808,11 @@
     if (tr) openPlayer(tr.dataset.id, tr.querySelector(".name button").textContent, tr.dataset.av);
   });
   async function openPlayer(id, name, av) {
-    $("d-name").innerHTML = avatar(av, name, "av-lg") + esc(name);
-    $("d-prof").href = profileUrl(id);
+    // ime (i slika) vode na profil igrača u igri
+    const dname = (url) => `<a class="dname" href="${esc(profileUrl(id))}" target="_blank" rel="noopener" title="Otvori profil u igri">` +
+      avatar(url, name, "av-lg") + `<span class="nm-t">${esc(name)}</span>` +
+      `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>`;
+    $("d-name").innerHTML = dname(av);
     $("d-meta").textContent = "Učitavanje…";
     $("d-chips").innerHTML = ""; $("d-rows").innerHTML = ""; $("d-chart").textContent = "";
     $("dlg").showModal();
@@ -818,7 +822,7 @@
       const fi = p.get("from"), ti = p.get("to");
       const period = fi || ti ? ` · ${isoToHr(fi) || "početak"} – ${isoToHr(ti) || "danas"}` : " · cijelo razdoblje";
       $("d-meta").textContent = (player.country_name || "ID " + player.user_id) + period;
-      if (player.avatar && !av) $("d-name").innerHTML = avatar(player.avatar, name, "av-lg") + esc(name);
+      if (player.avatar && !av) $("d-name").innerHTML = dname(player.avatar);
       $("d-chips").innerHTML = per_item.length ? per_item.map((r) => {
         const m = state.meta.get(r.item_code);
         const avgB = r.bought ? r.spent / r.bought : null, avgS = r.sold ? r.earned / r.sold : null;
