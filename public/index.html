@@ -201,6 +201,14 @@
   tbody tr:hover { background: var(--hover); }
   td.name button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
   td.name .sub { display: none; }
+  /* profilna slika (ako je nema ili se ne učita, vidi se prvo slovo imena) */
+  .av { --a: 24px; position: relative; display: inline-grid; place-items: center; flex: none; width: var(--a); height: var(--a); border-radius: 50%; overflow: hidden;
+    background: var(--hl); color: var(--rank); font-size: calc(var(--a) * .46); font-weight: 700; vertical-align: middle; margin-right: 8px; text-transform: uppercase; }
+  .av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .av-lg { --a: 44px; margin-right: 12px; }
+  td.name .nm { display: inline-flex; align-items: center; max-width: 100%; }
+  td.name .nm .prof { margin-left: 4px; }
+  .dhead h2 { display: flex; align-items: center; }
   /* link na profil igrača u igri */
   .prof { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 4px; vertical-align: -5px; border-radius: 6px; color: var(--muted); }
   .prof svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -617,6 +625,13 @@
     syncItems();
   }
 
+  /* ---------- profilna slika ---------- */
+  const avatar = (url, name, cls = "") => {
+    const ok = typeof url === "string" && /^https:\/\//.test(url);
+    return `<span class="av ${cls}" aria-hidden="true">${esc(String(name || "?").trim().charAt(0) || "?")}` +
+      (ok ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : "") + `</span>`;
+  };
+
   /* ---------- link na profil u igri ---------- */
   const profileUrl = (id) => `https://app.warera.io/user/${encodeURIComponent(id)}`;
   const profLink = (id, name) => `<a class="prof" href="${esc(profileUrl(id))}" target="_blank" rel="noopener" title="Profil u igri" aria-label="Profil igrača ${esc(name)} u igri">` +
@@ -654,9 +669,9 @@
       tb.innerHTML = `<tr><td colspan="7" class="empty">Nema rezultata za odabrane filtere.</td></tr>`;
     } else {
       tb.innerHTML = data.rows.map((r) => `
-        <tr data-id="${esc(r.user_id)}">
+        <tr data-id="${esc(r.user_id)}" data-av="${esc(r.avatar || "")}">
           <td class="rank">${r.rank}</td>
-          <td class="name"><button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}<span class="sub">${esc(r.country_name || "")}</span></td>
+          <td class="name"><span class="nm">${avatar(r.avatar, r.name || r.user_id)}<button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span><span class="sub">${esc(r.country_name || "")}</span></td>
           <td class="ctry">${esc(r.country_name || "–")}</td>
           <td class="${cls("bought")}">${fmt(r.bought)}<span class="sub">${fmtM(r.spent)}</span></td>
           <td class="${cls("spent")}">${fmtM(r.spent)}</td>
@@ -751,10 +766,10 @@
   $("rows").addEventListener("click", (e) => {
     if (e.target.closest("a")) return; // link na profil otvara igru, ne prozor
     const tr = e.target.closest("tr[data-id]");
-    if (tr) openPlayer(tr.dataset.id, tr.querySelector(".name button").textContent);
+    if (tr) openPlayer(tr.dataset.id, tr.querySelector(".name button").textContent, tr.dataset.av);
   });
-  async function openPlayer(id, name) {
-    $("d-name").textContent = name;
+  async function openPlayer(id, name, av) {
+    $("d-name").innerHTML = avatar(av, name, "av-lg") + esc(name);
     $("d-prof").href = profileUrl(id);
     $("d-meta").textContent = "Učitavanje…";
     $("d-chips").innerHTML = ""; $("d-rows").innerHTML = ""; $("d-chart").textContent = "";
@@ -765,6 +780,7 @@
       const fi = p.get("from"), ti = p.get("to");
       const period = fi || ti ? ` · ${isoToHr(fi) || "početak"} – ${isoToHr(ti) || "danas"}` : " · cijelo razdoblje";
       $("d-meta").textContent = (player.country_name || "ID " + player.user_id) + period;
+      if (player.avatar && !av) $("d-name").innerHTML = avatar(player.avatar, name, "av-lg") + esc(name);
       $("d-chips").innerHTML = per_item.length ? per_item.map((r) => {
         const m = state.meta.get(r.item_code);
         const avgB = r.bought ? r.spent / r.bought : null, avgS = r.sold ? r.earned / r.sold : null;
@@ -815,7 +831,7 @@
       : `<tr><td colspan="4" class="empty">Nema prometa.</td></tr>`;
     $("ov-today-h").textContent = `Danas najviše kupili · ${isoToHr(d.today)}`;
     $("ov-today").innerHTML = d.today_top.length ? d.today_top.map((r, i) =>
-      `<li data-id="${esc(r.user_id)}"><span class="rk">${i + 1}</span><span class="who"><button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span>` +
+      `<li data-id="${esc(r.user_id)}" data-av="${esc(r.avatar || "")}"><span class="rk">${i + 1}</span><span class="who">${avatar(r.avatar, r.name || r.user_id)}<button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span>` +
       `<small>${esc(r.country_name || "")}</small><span class="num"><b>${fmt(r.bought)}</b> · ${fmtM(r.spent)}</span></li>`).join("")
       : `<li class="empty">Danas još nema kupnji ovog itema.</li>`;
   }
@@ -881,7 +897,7 @@
   $("ov-today").addEventListener("click", (e) => {
     if (e.target.closest("a")) return;
     const li = e.target.closest("li[data-id]");
-    if (li) openPlayer(li.dataset.id, li.querySelector("button").textContent);
+    if (li) openPlayer(li.dataset.id, li.querySelector("button").textContent, li.dataset.av);
   });
 
   /* ---------- status: kašnjenje i potpunost podataka ---------- */

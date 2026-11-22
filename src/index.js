@@ -254,10 +254,11 @@ function upsertPlayerCountry(env, id, u, now) {
 
 function upsertPlayer(env, id, u, now) {
   return env.DB.prepare(
-    "INSERT INTO players (user_id, name, country_id, fetched_at) VALUES (?, ?, ?, ?) " +
+    "INSERT INTO players (user_id, name, country_id, fetched_at, avatar) VALUES (?, ?, ?, ?, ?) " +
       "ON CONFLICT(user_id) DO UPDATE SET name = COALESCE(excluded.name, name), " +
-      "country_id = COALESCE(excluded.country_id, country_id), fetched_at = excluded.fetched_at",
-  ).bind(id, u?.name ?? null, u?.country ?? null, now);
+      "country_id = COALESCE(excluded.country_id, country_id), fetched_at = excluded.fetched_at, " +
+      "avatar = COALESCE(excluded.avatar, avatar)",
+  ).bind(id, u?.name ?? null, u?.country ?? null, now, u?.avatar ?? null);
 }
 
 const PC = new Map(); // user_id -> country_id | null (poznato)
@@ -439,13 +440,35 @@ async function syncTransactions(env, meta, pages) {
 /* Igrači (ime + država)                                               */
 /* ------------------------------------------------------------------ */
 
+// profilna slika: adresa je oblika media.warera.io/avatars/<id>-<vrijeme>-<nasumično>.jpg, pa se ne može složiti iz ID-a
+const AVATAR_KEYS = ["avatarUrl", "avatar", "picture", "pictureUrl", "image", "imageUrl", "profilePicture", "photo", "photoUrl"];
+function avatarOf(u) {
+  for (const k of AVATAR_KEYS) {
+    let v = u?.[k];
+    if (v && typeof v === "object") v = v.url ?? v.src ?? v.path ?? null;
+    if (typeof v !== "string" || !v) continue;
+    if (/^https:\/\//.test(v)) return v;
+    if (/avatars\//.test(v)) return "https://media.warera.io/" + v.replace(/^\/+/, "").replace(/^media\.warera\.io\//, "");
+  }
+  return null;
+}
+
 function parseUser(u) {
   if (!u) return null;
   const c = u.country ?? u.countryId ?? u.citizenship ?? u.citizenshipCountry ?? null;
   return {
     name: u.username ?? u.name ?? null,
     country: c ? String(idOf(c)) : null,
+    avatar: avatarOf(u),
   };
+}
+
+// jednom zapiše nazive polja iz odgovora user.getUserLite (i polja koja izgledaju kao slika), radi provjere
+async function noteUserShape(env, users) {
+  const u = users.find((x) => x && typeof x === "object");
+  if (!u) return;
+  const pics = Object.fromEntries(Object.entries(u).filter(([k, v]) => /avatar|pic|image|photo/i.test(k)).map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 160) : typeof v]));
+  await setMeta(env, "dbg_user_keys", JSON.stringify({ keys: Object.keys(u).slice(0, 60), pics }).slice(0, 1500));
 }
 
 async function enrichPlayers(env, meta, batches = 2) {
@@ -480,6 +503,7 @@ async function enrichPlayers(env, meta, batches = 2) {
     if (!ids.length) return;
 
     const users = await trpcBatch(env, "user.getUserLite", ids.map((userId) => ({ userId })));
+    if (!meta.dbg_user_keys) { await noteUserShape(env, users); meta.dbg_user_keys = "1"; }
     const now = Date.now();
     const stmts = [];
     ids.forEach((id, i) => {
@@ -621,7 +645,7 @@ async function apiRanking(env, url) {
   }
 
   const sql =
-    "SELECT d.user_id, p.name, p.country_id, c.name AS country_name, " +
+    "SELECT d.user_id, p.name, p.avatar, p.country_id, c.name AS country_name, " +
     "SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold, " +
     "ROUND(SUM(d.bought_money), 3) AS spent, ROUND(SUM(d.sold_money), 3) AS earned " +
     "FROM player_item_daily d " +
@@ -689,7 +713,7 @@ async function apiOverview(env, url, ctx, request) {
         FROM + where1 + "GROUP BY d.day ORDER BY d.day",
     ).bind(...a1),
     env.DB.prepare(
-      "SELECT d.user_id, p.name, c.name AS country_name, SUM(d.bought_qty) AS bought, ROUND(SUM(d.bought_money), 3) AS spent " +
+      "SELECT d.user_id, p.name, p.avatar, c.name AS country_name, SUM(d.bought_qty) AS bought, ROUND(SUM(d.bought_money), 3) AS spent " +
         FROM + "WHERE " + w2.join(" AND ") + " AND d.bought_qty > 0 GROUP BY d.user_id ORDER BY bought DESC, spent DESC LIMIT 5",
     ).bind(...a2),
   ]);
@@ -768,7 +792,7 @@ async function apiPlayer(env, id, url, ctx, request) {
 
   const f = parseFilters(url);
   const player = await env.DB.prepare(
-    "SELECT p.user_id, p.name, p.country_id, c.name AS country_name FROM players p " +
+    "SELECT p.user_id, p.name, p.avatar, p.country_id, c.name AS country_name FROM players p " +
       "LEFT JOIN countries c ON c.id = p.country_id WHERE p.user_id = ?",
   )
     .bind(id)

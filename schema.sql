@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS players (
   user_id    TEXT PRIMARY KEY,
   name       TEXT,
   country_id TEXT,
-  fetched_at INTEGER NOT NULL
+  fetched_at INTEGER NOT NULL,
+  avatar     TEXT -- adresa profilne slike (media.warera.io/avatars/...)
 );
 CREATE INDEX IF NOT EXISTS idx_players_country ON players(country_id);
 CREATE INDEX IF NOT EXISTS idx_players_name ON players(name COLLATE NOCASE);
