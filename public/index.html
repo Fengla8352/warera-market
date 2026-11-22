@@ -238,7 +238,10 @@
   td.name .nm { display: inline-flex; align-items: center; max-width: 100%; }
   td.name .nm .prof { margin-left: 4px; }
   .dhead h2 { display: flex; align-items: center; }
-  /* odabir za usporedbu */
+  /* odabir za usporedbu: zaseban stupac lijevo od # */
+  th.sel, td.sel { width: 36px; padding-right: 0 !important; }
+  td.sel .cmp { margin: 0; vertical-align: middle; }
+  @media (max-width: 560px) { th.sel, td.sel { width: 30px; padding-left: 10px !important; } th.rank, td.rank { padding-left: 4px !important; } }
   .cmp { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; margin-right: 8px; padding: 0; border: 1.5px solid color-mix(in srgb, var(--muted) 60%, transparent); border-radius: 5px; background: var(--panel); cursor: pointer; }
   .cmp svg { width: 13px; height: 13px; fill: none; stroke: transparent; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
   .cmp:hover:not(:disabled) { border-color: var(--rank); }
@@ -436,13 +439,13 @@
   <div class="card" id="card" aria-busy="false"><div class="scroll">
     <table>
       <thead><tr>
-        <th class="rank">#</th><th>Igrač</th><th class="ctry">Država</th>
+        <th class="sel" aria-label="Odabir za usporedbu"></th><th class="rank">#</th><th>Igrač</th><th class="ctry">Država</th>
         <th class="num" aria-sort="descending"><button type="button" data-sort="bought" data-alt="spent">Kupljeno</button></th>
         <th class="num mny" aria-sort="none"><button type="button" data-sort="spent">Potrošeno</button></th>
         <th class="num" aria-sort="none"><button type="button" data-sort="sold" data-alt="earned">Prodano</button></th>
         <th class="num mny" aria-sort="none"><button type="button" data-sort="earned">Zarađeno</button></th>
       </tr></thead>
-      <tbody id="rows"><tr><td colspan="7" class="empty">Učitavanje…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="8" class="empty">Učitavanje…</td></tr></tbody>
     </table>
   </div></div>
 
@@ -773,19 +776,20 @@
     $("card").setAttribute("aria-busy", "true");
     let data;
     try { data = await api("/api/ranking?" + p); }
-    catch { if (my === state.seq) { $("rows").innerHTML = `<tr><td colspan="7" class="empty err">Greška pri dohvaćanju podataka.</td></tr>`; $("card").setAttribute("aria-busy", "false"); } return; }
+    catch { if (my === state.seq) { $("rows").innerHTML = `<tr><td colspan="8" class="empty err">Greška pri dohvaćanju podataka.</td></tr>`; $("card").setAttribute("aria-busy", "false"); } return; }
     if (my !== state.seq) return; // stigao je noviji zahtjev
     $("card").setAttribute("aria-busy", "false");
     const tb = $("rows");
     const pair = { bought: "spent", sold: "earned" };
     const cls = (k) => `num ${k === "spent" || k === "earned" ? "money mny" : ""} ${state.sort === k || (narrow.matches && pair[k] === state.sort) ? "main" : ""}`;
     if (!data.rows.length) {
-      tb.innerHTML = `<tr><td colspan="7" class="empty">Nema rezultata za odabrane filtere.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="8" class="empty">Nema rezultata za odabrane filtere.</td></tr>`;
     } else {
       tb.innerHTML = data.rows.map((r) => `
         <tr data-id="${esc(r.user_id)}" data-av="${esc(r.avatar || "")}">
+          <td class="sel">${cmpBox(r.user_id, r.name || r.user_id, r.avatar)}</td>
           <td class="rank">${r.rank}</td>
-          <td class="name"><span class="nm">${cmpBox(r.user_id, r.name || r.user_id, r.avatar)}${avatar(r.avatar, r.name || r.user_id)}<button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span><span class="sub">${esc(r.country_name || "")}</span></td>
+          <td class="name"><span class="nm">${avatar(r.avatar, r.name || r.user_id)}<button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span><span class="sub">${esc(r.country_name || "")}</span></td>
           <td class="ctry">${esc(r.country_name || "–")}</td>
           <td class="${cls("bought")}">${fmt(r.bought)}<span class="sub">${fmtM(r.spent)}</span></td>
           <td class="${cls("spent")}">${fmtM(r.spent)}</td>
