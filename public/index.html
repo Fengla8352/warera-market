@@ -142,7 +142,7 @@
   .cal-grid button.partial:not(.sel):not(:disabled) { color: var(--muted); text-decoration: underline dotted; text-underline-offset: 3px; }
 
   /* pregled iznad tablice */
-  .ov { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; align-items: start; }
+  .ov { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; align-items: stretch; }
   .ov[aria-busy=true] { opacity: .6; }
   .ov-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: var(--elev); min-width: 0; }
   .ov-side { display: grid; gap: 14px; align-content: start; min-width: 0; }
@@ -150,10 +150,12 @@
   .kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
   .kpi small { display: block; color: var(--muted); font-size: 12px; }
   .kpi b { color: var(--text); font-size: 18px; font-variant-numeric: tabular-nums; }
-  .ov-chart { position: relative; }
+  /* lijeva kartica je iste visine kao desni stupac; graf popunjava ostatak */
+  .ov > .ov-card { display: flex; flex-direction: column; }
+  .ov-chart { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 190px; }
   .ov-axis { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-  .pwrap { position: relative; }
-  .ov-chart svg { display: block; width: 100%; height: 150px; overflow: visible; }
+  .pwrap { position: relative; flex: 1; min-height: 150px; }
+  .ov-chart svg { display: block; position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
   .ov-chart .grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
   .ov-chart .pline { fill: none; stroke: var(--rank); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
   .ov-chart .cross { stroke: var(--muted); stroke-width: 1; vector-effect: non-scaling-stroke; }
@@ -840,7 +842,7 @@
       tip.hidden = false;
       const bw = box.clientWidth, px = (X(i) / W) * bw;
       tip.style.left = Math.max(0, Math.min(px - tip.offsetWidth / 2, bw - tip.offsetWidth)) + "px";
-      if (r.price != null) { dot.hidden = false; dot.style.left = px + "px"; dot.style.top = (Y(r.price) / H) * 150 + "px"; } else dot.hidden = true;
+      if (r.price != null) { dot.hidden = false; dot.style.left = px + "px"; dot.style.top = (Y(r.price) / H) * svg.getBoundingClientRect().height + "px"; } else dot.hidden = true;
     };
     const hide = () => { cross.setAttribute("visibility", "hidden"); tip.hidden = true; dot.hidden = true; };
     const hit = svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "transparent", tabindex: "0", "aria-label": "Pomakni za vrijednosti po danu" });
