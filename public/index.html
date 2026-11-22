@@ -228,7 +228,7 @@
   th[aria-sort="descending"] button::after { content: "↓"; }
   tbody tr { cursor: pointer; }
   tbody tr:hover { background: var(--hover); }
-  td.name button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
+  td.name button:not(.cmp) { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
   td.name .sub { display: none; }
   /* profilna slika (ako je nema ili se ne učita, vidi se prvo slovo imena) */
   .av { --a: 24px; position: relative; display: inline-grid; place-items: center; flex: none; width: var(--a); height: var(--a); border-radius: 50%; overflow: hidden;
@@ -238,6 +238,58 @@
   td.name .nm { display: inline-flex; align-items: center; max-width: 100%; }
   td.name .nm .prof { margin-left: 4px; }
   .dhead h2 { display: flex; align-items: center; }
+  /* odabir za usporedbu */
+  .cmp { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; margin-right: 8px; padding: 0; border: 1.5px solid color-mix(in srgb, var(--muted) 60%, transparent); border-radius: 5px; background: var(--panel); cursor: pointer; }
+  .cmp svg { width: 13px; height: 13px; fill: none; stroke: transparent; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .cmp:hover:not(:disabled) { border-color: var(--rank); }
+  .cmp.on { background: var(--rank); border-color: var(--rank); }
+  .cmp.on svg { stroke: var(--on-accent, #fff); }
+  :root[data-theme="light"] .cmp.on svg { stroke: #fff; }
+  .cmp:disabled { opacity: .35; cursor: default; }
+  .cmpbar { position: fixed; z-index: 30; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; box-shadow: 0 10px 30px var(--shadow); }
+  .cmpbar[hidden] { display: none; }
+  .cmpbar-who { display: flex; }
+  .cmpbar-who .av { margin-right: -6px; box-shadow: 0 0 0 2px var(--panel); }
+  .cmpbar button { font: inherit; font-size: 14px; border-radius: 9px; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
+  #cmpbar-go { background: var(--rank); color: var(--on-accent, #fff); border: 0; font-weight: 600; margin-left: 8px; }
+  :root[data-theme="light"] #cmpbar-go { color: #fff; }
+  #cmpbar-go:disabled { background: var(--panel-2); color: var(--muted); cursor: default; }
+  #cmpbar-clear { background: none; border: 1px solid var(--line); color: var(--text-2); }
+  .dhead .dbtns { display: flex; gap: 8px; align-items: flex-start; }
+  #d-cmp.on { border-color: var(--rank); color: var(--rank); }
+  /* kartica usporedbe */
+  #cmpdlg { width: min(900px, 96vw); }
+  .c-tools { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 20px 12px; font-size: 13px; color: var(--muted); }
+  .c-tools label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .cbody { max-height: 62vh; overflow: auto; border-top: 1px solid var(--line); }
+  #c-table { min-width: 0; }
+  #c-table th, #c-table td { padding: 8px 12px; }
+  #c-table thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .cmp-h { display: inline-flex; align-items: center; gap: 0; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); font-weight: 600; }
+  .cmp-h .av { margin-right: 6px; }
+  #c-table td.num { min-width: 92px; }
+  #c-table .cv { display: block; font-variant-numeric: tabular-nums; }
+  #c-table td.top .cv { color: var(--rank); font-weight: 700; }
+  .cbar { display: block; height: 4px; margin-top: 4px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
+  .cbar i { display: block; height: 100%; background: var(--rank); opacity: .55; border-radius: 2px; }
+  #c-table td.top .cbar i { opacity: 1; }
+  #c-table tfoot td { font-weight: 700; color: var(--text); border-top: 1px solid var(--line); border-bottom: 0; }
+  #c-table tfoot td.top { color: var(--rank); }
+  #c-table .item-cell .tile { --s: 26px !important; cursor: default; opacity: 1 !important; border-radius: 5px; }
+  .pager .mid { display: flex; align-items: center; gap: 12px; }
+  #csv { min-width: 0; padding: 7px 12px; font-size: 13px; }
+  @media (max-width: 560px) {
+    #c-table th, #c-table td { padding: 7px 6px; }
+    #c-table td.num { min-width: 64px; }
+    #c-table .iname { display: none; }
+    .cmp-h { flex-direction: column; gap: 2px; font-size: 11px; }
+    .cmp-h .av { margin-right: 0; }
+    .cmpbar { bottom: 10px; gap: 6px; }
+    .cmpbar button { padding: 7px 10px; font-size: 13px; }
+    .pager .mid { flex-direction: column; gap: 6px; }
+  }
+
   /* link na profil igrača u igri */
   .prof { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 4px; vertical-align: -5px; border-radius: 6px; color: var(--muted); }
   .prof svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -246,9 +298,9 @@
   /* izgleda kao obično ime, bez boje i podcrte linka */
   .dname, .dname:hover, .dname:visited { color: inherit; text-decoration: none; display: inline-flex; align-items: center; cursor: pointer; }
   /* hover na nicku: blaga pozadina iza imena (ne izgleda kao link), isto u tablici, listi Danas i prozoru */
-  td.name button, .ov li button, .dname .nm-t { border-radius: 5px; transition: background-color .12s, box-shadow .12s; }
-  td.name button:hover, .ov li button:hover, .dname:hover .nm-t,
-  td.name button:focus-visible, .ov li button:focus-visible, .dname:focus-visible .nm-t { background: var(--hl); box-shadow: 0 0 0 4px var(--hl); }
+  td.name button:not(.cmp), .ov li button, .dname .nm-t { border-radius: 5px; transition: background-color .12s, box-shadow .12s; }
+  td.name button:not(.cmp):hover, .ov li button:hover, .dname:hover .nm-t,
+  td.name button:not(.cmp):focus-visible, .ov li button:focus-visible, .dname:focus-visible .nm-t { background: var(--hl); box-shadow: 0 0 0 4px var(--hl); }
   .dname:focus-visible { outline: none; }
   td.main { color: var(--rank); font-weight: 700; }
   td.empty { padding: 36px; text-align: center; color: var(--muted); white-space: normal; }
@@ -396,7 +448,7 @@
 
   <div class="pager">
     <button type="button" id="prev">← Prethodna</button>
-    <span id="page"></span>
+    <span class="mid"><span id="page"></span><button type="button" id="csv" title="Preuzmi trenutni prikaz (svi redovi) kao CSV za Excel">⤓ CSV</button></span>
     <button type="button" id="next">Sljedeća →</button>
   </div>
   <section class="prices" id="prices" aria-labelledby="prices-h">
@@ -412,7 +464,7 @@
 <dialog id="dlg" aria-labelledby="d-name">
   <div class="dhead">
     <div><h2 id="d-name"></h2><div class="dsub" id="d-meta"></div></div>
-    <button type="button" id="d-close">Zatvori</button>
+    <div class="dbtns"><button type="button" id="d-cmp">+ Usporedi</button><button type="button" id="d-close">Zatvori</button></div>
   </div>
   <div class="chips" id="d-chips"></div>
   <div class="chart" id="d-chart"></div>
@@ -420,6 +472,26 @@
     <thead><tr><th>Vrijeme</th><th>Tip</th><th>Item</th><th class="num">Kol.</th><th class="num">Iznos</th><th>Protustranka</th></tr></thead>
     <tbody id="d-rows"></tbody>
   </table></div>
+</dialog>
+
+<div class="cmpbar" id="cmpbar" hidden>
+  <span class="cmpbar-who" id="cmpbar-who"></span>
+  <button type="button" id="cmpbar-go">Usporedi</button>
+  <button type="button" id="cmpbar-clear">Očisti</button>
+</div>
+
+<dialog id="cmpdlg" aria-labelledby="c-title">
+  <div class="dhead">
+    <div><h2 id="c-title">Usporedba igrača</h2><div class="dsub" id="c-meta"></div></div>
+    <button type="button" id="c-close">Zatvori</button>
+  </div>
+  <div class="c-tools">
+    <div class="seg" id="c-metric" role="group" aria-label="Što se uspoređuje">
+      <button type="button" data-m="bought" aria-pressed="true">Kupljeno</button><button type="button" data-m="spent" aria-pressed="false">Potrošeno</button><button type="button" data-m="sold" aria-pressed="false">Prodano</button><button type="button" data-m="earned" aria-pressed="false">Zarađeno</button>
+    </div>
+    <label><input type="checkbox" id="c-all"> prikaži sve iteme</label>
+  </div>
+  <div class="cbody"><table id="c-table"></table></div>
 </dialog>
 
 <script>
@@ -651,6 +723,7 @@
     if (t) u.set("to", t);
     if (state.sort !== "bought") u.set("sort", state.sort);
     if ($("q").value.trim()) u.set("q", $("q").value.trim());
+    if (state.cmp && state.cmp.size) u.set("compare", [...state.cmp.keys()].join(","));
     const qs = u.toString();
     try { history.replaceState(null, "", qs ? "?" + qs : location.pathname); } catch {}
   }
@@ -712,7 +785,7 @@
       tb.innerHTML = data.rows.map((r) => `
         <tr data-id="${esc(r.user_id)}" data-av="${esc(r.avatar || "")}">
           <td class="rank">${r.rank}</td>
-          <td class="name"><span class="nm">${avatar(r.avatar, r.name || r.user_id)}<button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span><span class="sub">${esc(r.country_name || "")}</span></td>
+          <td class="name"><span class="nm">${cmpBox(r.user_id, r.name || r.user_id, r.avatar)}${avatar(r.avatar, r.name || r.user_id)}<button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span><span class="sub">${esc(r.country_name || "")}</span></td>
           <td class="ctry">${esc(r.country_name || "–")}</td>
           <td class="${cls("bought")}">${fmt(r.bought)}<span class="sub">${fmtM(r.spent)}</span></td>
           <td class="${cls("spent")}">${fmtM(r.spent)}</td>
@@ -806,6 +879,8 @@
 
   $("rows").addEventListener("click", (e) => {
     if (e.target.closest("a")) return; // link na profil otvara igru, ne prozor
+    const cb = e.target.closest("button.cmp");
+    if (cb) { toggleCmp(cb.dataset.id, cb.dataset.name, cb.dataset.av); return; }
     const tr = e.target.closest("tr[data-id]");
     if (tr) openPlayer(tr.dataset.id, tr.querySelector(".name button").textContent, tr.dataset.av);
   });
@@ -814,6 +889,9 @@
     const dname = (url) => `<a class="dname" href="${esc(profileUrl(id))}" target="_blank" rel="noopener" title="Otvori profil u igri">` +
       avatar(url, name, "av-lg") + `<span class="nm-t">${esc(name)}</span></a>`;
     $("d-name").innerHTML = dname(av);
+    $("d-cmp").dataset.id = id;
+    $("d-cmp").onclick = () => toggleCmp(id, name, av);
+    syncCmp();
     $("d-meta").textContent = "Učitavanje…";
     $("d-chips").innerHTML = ""; $("d-rows").innerHTML = ""; $("d-chart").textContent = "";
     $("dlg").showModal();
@@ -1013,6 +1091,120 @@
     new IntersectionObserver((ents, obs) => { if (ents.some((x) => x.isIntersecting)) { prSeen = true; obs.disconnect(); loadPrices(); } }, { rootMargin: "300px" }).observe($("prices"));
   } else { prSeen = true; }
 
+  /* ---------- usporedba igrača (do 4) ---------- */
+  const CMP_MAX = 4;
+  state.cmp = new Map(); // id -> { name, avatar }
+  state.cmpMetric = "bought";
+  const CMP_LABEL = { bought: "Kupljeno", spent: "Potrošeno", sold: "Prodano", earned: "Zarađeno" };
+  const cmpBox = (id, name, av) => {
+    const on = state.cmp.has(id), full = !on && state.cmp.size >= CMP_MAX;
+    return `<button type="button" class="cmp${on ? " on" : ""}" data-id="${esc(id)}" data-name="${esc(name)}" data-av="${esc(av || "")}"` +
+      ` aria-pressed="${on}" ${full ? "disabled" : ""} title="${full ? "Najviše 4 igrača" : on ? "Makni iz usporedbe" : "Dodaj u usporedbu"}" aria-label="Usporedi: ${esc(name)}">` +
+      `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg></button>`;
+  };
+  function toggleCmp(id, name, av) {
+    if (state.cmp.has(id)) state.cmp.delete(id);
+    else if (state.cmp.size < CMP_MAX) state.cmp.set(id, { name, avatar: av || null });
+    syncCmp(); writeUrl();
+  }
+  function syncCmp() {
+    for (const b of document.querySelectorAll("button.cmp")) {
+      const on = state.cmp.has(b.dataset.id), full = !on && state.cmp.size >= CMP_MAX;
+      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); b.disabled = full;
+      b.title = full ? "Najviše 4 igrača" : on ? "Makni iz usporedbe" : "Dodaj u usporedbu";
+    }
+    const n = state.cmp.size;
+    $("cmpbar").hidden = n === 0;
+    $("cmpbar-who").innerHTML = [...state.cmp.entries()].map(([id, p]) => avatar(p.avatar, p.name)).join("");
+    $("cmpbar-go").textContent = n >= 2 ? `Usporedi (${n})` : "Odaberi još jednog igrača";
+    $("cmpbar-go").disabled = n < 2;
+    const db = $("d-cmp");
+    if (db && db.dataset.id) { const on = state.cmp.has(db.dataset.id); db.textContent = on ? "✓ U usporedbi" : "+ Usporedi"; db.classList.toggle("on", on); db.disabled = !on && n >= CMP_MAX; }
+  }
+  $("cmpbar-clear").onclick = () => { state.cmp.clear(); syncCmp(); writeUrl(); };
+  $("cmpbar-go").onclick = () => openCompare();
+  $("c-close").onclick = () => $("cmpdlg").close();
+  $("cmpdlg").addEventListener("click", (e) => { if (e.target === $("cmpdlg")) $("cmpdlg").close(); });
+  $("c-metric").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-m]");
+    if (!b) return;
+    state.cmpMetric = b.dataset.m;
+    for (const x of $("c-metric").children) x.setAttribute("aria-pressed", String(x === b));
+    renderCompare();
+  });
+  $("c-all").addEventListener("change", renderCompare);
+
+  async function openCompare() {
+    if (state.cmp.size < 2) return;
+    const ids = [...state.cmp.keys()];
+    const p = periodParams(new URLSearchParams({ ids: ids.join(",") }));
+    p.delete("items");
+    const fi = p.get("from"), ti = p.get("to");
+    $("c-meta").textContent = fi || ti ? `${isoToHr(fi) || "početak"} – ${isoToHr(ti) || "danas"}` : "cijelo razdoblje";
+    $("c-table").innerHTML = `<tbody><tr><td class="empty">Učitavanje…</td></tr></tbody>`;
+    if (!$("cmpdlg").open) $("cmpdlg").showModal();
+    try { state.cmpData = await api("/api/compare?" + p); }
+    catch { $("c-table").innerHTML = `<tbody><tr><td class="empty err">Greška pri dohvaćanju usporedbe.</td></tr></tbody>`; return; }
+    // imena i slike iz baze (npr. kad je usporedba otvorena iz linka)
+    for (const pl of state.cmpData.players) state.cmp.set(pl.user_id, { name: pl.name || pl.user_id, avatar: pl.avatar });
+    syncCmp();
+    renderCompare();
+  }
+  function renderCompare() {
+    const d = state.cmpData;
+    if (!d) return;
+    const k = state.cmpMetric, money = k === "spent" || k === "earned";
+    const players = d.players;
+    const val = new Map(); // item -> Map(user -> value)
+    for (const r of d.rows) { if (!val.has(r.item_code)) val.set(r.item_code, new Map()); val.get(r.item_code).set(r.user_id, r[k] || 0); }
+    const showAll = $("c-all").checked;
+    const items = [...state.meta.values()].filter((m) => showAll || [...(val.get(m.code)?.values() || [])].some((v) => v > 0));
+    const f = (v) => (v ? (money ? fmtM(v) : fmt(v)) : "–");
+    const head = `<thead><tr><th>Item</th>${players.map((p) =>
+      `<th class="num"><span class="cmp-h">${avatar(p.avatar, p.name || p.user_id)}<span>${esc(p.name || p.user_id)}</span></span></th>`).join("")}</tr></thead>`;
+    const body = items.length ? items.map((m) => {
+      const vals = players.map((p) => val.get(m.code)?.get(p.user_id) || 0);
+      const max = Math.max(...vals);
+      return `<tr><td><span class="item-cell">${tile(m.code)}<span class="iname">${esc(m.name)}</span></span></td>` + vals.map((v) =>
+        `<td class="num${v && v === max ? " top" : ""}"><span class="cv">${f(v)}</span><span class="cbar"><i style="width:${max ? Math.round((v / max) * 100) : 0}%"></i></span></td>`).join("") + "</tr>";
+    }).join("") : `<tr><td colspan="${players.length + 1}" class="empty">Odabrani igrači nemaju prometa u ovom razdoblju.</td></tr>`;
+    const tot = players.map((p) => d.rows.filter((r) => r.user_id === p.user_id).reduce((a, r) => a + (r[k] || 0), 0));
+    const tmax = Math.max(...tot);
+    const foot = `<tfoot><tr><td>Ukupno · ${esc(CMP_LABEL[k].toLowerCase())}</td>${tot.map((v) => `<td class="num${v && v === tmax ? " top" : ""}">${f(v)}</td>`).join("")}</tr></tfoot>`;
+    $("c-table").innerHTML = head + `<tbody>${body}</tbody>` + foot;
+  }
+
+  /* ---------- izvoz u CSV (sve stranice za trenutne filtere) ---------- */
+  $("csv").onclick = async () => {
+    const btn = $("csv"); btn.disabled = true; const label = btn.textContent; btn.textContent = "Priprema…";
+    try {
+      const base = periodParams(new URLSearchParams({ limit: 100, sort: state.sort }));
+      if ($("q").value.trim()) base.set("q", $("q").value.trim());
+      if ($("country").value) base.set("country", $("country").value);
+      const rows = [];
+      for (let off = 0; off < 5000; off += 100) {
+        base.set("offset", off);
+        const d = await api("/api/ranking?" + base);
+        rows.push(...d.rows);
+        if (!d.hasMore) break;
+      }
+      const num = (v, dec) => (v == null ? "" : Number(v).toLocaleString("hr-HR", { useGrouping: false, minimumFractionDigits: dec, maximumFractionDigits: dec }));
+      const cell = (v) => { const s = String(v ?? ""); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      const m = state.meta.get(state.item);
+      const lines = [["Rang", "Igrač", "Država", "Kupljeno", "Potrošeno", "Prodano", "Zarađeno", "Item", "Od", "Do", "Profil"].join(";")];
+      for (const r of rows) lines.push([r.rank, r.name || r.user_id, r.country_name || "", num(r.bought, 0), num(r.spent, 2), num(r.sold, 0), num(r.earned, 2),
+        m ? m.name : state.item || "", isoToHr(base.get("from")) || "", isoToHr(base.get("to")) || "", profileUrl(r.user_id)].map(cell).join(";"));
+      // BOM i ; kao razdjelnik da hrvatski Excel ispravno otvori datoteku i decimalne zareze
+      const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `warera-market_${state.item || "svi"}_${base.get("from") || "pocetak"}_${base.get("to") || "danas"}.csv`;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } catch { alert("Izvoz nije uspio, pokušaj ponovno."); }
+    btn.disabled = false; btn.textContent = label;
+  };
+
   /* ---------- status: kašnjenje i potpunost podataka ---------- */
   const STALE_MS = 5 * 60 * 1000;
   function syncNote() {
@@ -1059,7 +1251,10 @@
   syncSortHeaders();
   setDates(validIso(urlIn.get("from")), validIso(urlIn.get("to")));
   if (urlIn.get("q")) $("q").value = urlIn.get("q");
-  loadFilters().then(() => { load(); loadOverview(); }).catch(() => load());
+  // ?compare=id1,id2 iz poslanog linka: odabir se vrati i usporedba otvori (imena stižu iz API-ja)
+  for (const id of (urlIn.get("compare") || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, CMP_MAX)) state.cmp.set(id, { name: id, avatar: null });
+  syncCmp();
+  loadFilters().then(() => { load(); loadOverview(); if (state.cmp.size >= 2) openCompare(); }).catch(() => load());
   loadStatus();
   setInterval(loadStatus, 60000);
 })();

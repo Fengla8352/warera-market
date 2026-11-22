@@ -863,6 +863,42 @@ async function apiPrices(env, url, ctx, request) {
   return res;
 }
 
+// usporedba do 4 igrača: zbroj po itemu za isto razdoblje (iz dnevne statistike, bez upisa)
+async function apiCompare(env, url, ctx, request) {
+  const ids = [...new Set((url.searchParams.get("ids") || "").split(",").map((x) => x.trim()).filter((x) => /^[A-Za-z0-9_-]{1,64}$/.test(x)))].slice(0, 4);
+  if (!ids.length) return json({ error: "Nema igrača za usporedbu" }, 400);
+  const cache = typeof caches !== "undefined" ? caches.default : null;
+  const cacheKey = new Request(request.url);
+  if (cache) {
+    const hit = await cache.match(cacheKey);
+    if (hit) return hit;
+  }
+  const f = parseFilters(url);
+  const ph = ids.map(() => "?").join(",");
+  const where = [`d.user_id IN (${ph})`], args = [...ids];
+  periodWhere(f, where, args, { withItems: false });
+  const [players, rows] = await env.DB.batch([
+    env.DB.prepare(
+      "SELECT p.user_id, p.name, p.avatar, c.name AS country_name FROM players p " +
+        `LEFT JOIN countries c ON c.id = p.country_id WHERE p.user_id IN (${ph})`,
+    ).bind(...ids),
+    env.DB.prepare(
+      "SELECT d.user_id, d.item_code, SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold, " +
+        "ROUND(SUM(d.bought_money), 3) AS spent, ROUND(SUM(d.sold_money), 3) AS earned " +
+        `FROM player_item_daily d WHERE ${where.join(" AND ")} GROUP BY d.user_id, d.item_code`,
+    ).bind(...args),
+  ]);
+  // redoslijed igrača kao u zahtjevu
+  const byId = new Map(players.results.map((p) => [p.user_id, p]));
+  const res = json(
+    { players: ids.filter((id) => byId.has(id)).map((id) => byId.get(id)), rows: rows.results },
+    200,
+    { "cache-control": "public, max-age=60" },
+  );
+  if (cache) ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  return res;
+}
+
 async function apiFilters(env) {
   const tracked = await trackedCountries(env);
   const ids = tracked?.ids?.length ? tracked.ids : null;
@@ -1054,6 +1090,7 @@ export default {
       if (path === "/api/filters") return await apiFilters(env);
       if (path === "/api/overview") return await apiOverview(env, url, ctx, request);
       if (path === "/api/prices") return await apiPrices(env, url, ctx, request);
+      if (path === "/api/compare") return await apiCompare(env, url, ctx, request);
       if (path === "/api/status") return await apiStatus(env, ctx, request);
       if (path.startsWith("/api/player/")) {
         return await apiPlayer(env, decodeURIComponent(path.slice("/api/player/".length)), url, ctx, request);

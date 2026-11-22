@@ -169,3 +169,18 @@ test("odbijen API ključ: sinkronizacija nastavlja bez ključa i to prijavljuje"
   const st = await get(worker, env, "/api/status");
   assert.ok(st.body.errors.err_apikey);
 });
+
+test("API usporedbe: zbroj po itemu za odabrane igrače, najviše 4", async () => {
+  const { worker, env, db } = await synced();
+  const ids = db.prepare("SELECT user_id FROM players ORDER BY rowid LIMIT 5").all().map((r) => r.user_id);
+  const r = await get(worker, env, "/api/compare?ids=" + ids.join(","));
+  assert.equal(r.status, 200);
+  assert.equal(r.body.players.length, 4, "najviše 4 igrača");
+  assert.deepEqual(r.body.players.map((p) => p.user_id), ids.slice(0, 4), "redoslijed kao u zahtjevu");
+  for (const id of ids.slice(0, 4)) {
+    const api = r.body.rows.filter((x) => x.user_id === id).reduce((a, x) => a + x.bought, 0);
+    const exp = db.prepare("SELECT COALESCE(SUM(bought_qty), 0) n FROM player_item_daily WHERE user_id = ?").get(id).n;
+    assert.equal(api, exp, `kupljeno za ${id}`);
+  }
+  assert.equal((await get(worker, env, "/api/compare?ids=")).status, 400);
+});
