@@ -75,7 +75,7 @@ function setMeta(env, key, value) {
     return env.DB.prepare("DELETE FROM meta WHERE key = ?").bind(key).run();
   }
   return env.DB.prepare(
-    "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value WHERE value IS NOT excluded.value",
   )
     .bind(key, String(value))
     .run();
@@ -134,7 +134,7 @@ async function refreshStatic(env, meta) {
   for (const a of alliances) {
     stmts.push(
       env.DB.prepare(
-        "INSERT INTO alliances (id, name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name",
+        "INSERT INTO alliances (id, name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name WHERE name IS NOT excluded.name",
       ).bind(String(a._id ?? a.id), a.name ?? a.title ?? null),
     );
   }
@@ -143,7 +143,8 @@ async function refreshStatic(env, meta) {
     stmts.push(
       env.DB.prepare(
         "INSERT INTO countries (id, name, alliance_id) VALUES (?, ?, ?) " +
-          "ON CONFLICT(id) DO UPDATE SET name = excluded.name, alliance_id = excluded.alliance_id",
+          "ON CONFLICT(id) DO UPDATE SET name = excluded.name, alliance_id = excluded.alliance_id " +
+          "WHERE name IS NOT excluded.name OR alliance_id IS NOT excluded.alliance_id",
       ).bind(cid, c.name ?? null, allianceOfCountry.get(cid) ?? null),
     );
   }
@@ -314,7 +315,7 @@ function setMetaMany(env, obj) {
     v === null || v === undefined || v === ""
       ? env.DB.prepare("DELETE FROM meta WHERE key = ?").bind(k)
       : env.DB.prepare(
-          "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+          "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value WHERE value IS NOT excluded.value",
         ).bind(k, String(v)),
   );
   return stmts.length ? env.DB.batch(stmts) : null;
@@ -499,7 +500,6 @@ async function enrichPlayers(env, meta, batches = 2) {
 
 async function runSync(env) {
   try {
-    await setMeta(env, "last_tick", new Date().toISOString());
     if (!env.WARERA_API_KEY) {
       await setMeta(env, "err_key", "WARERA_API_KEY nije postavljen u Workeru (secret nedostaje ili nije objavljen)");
       return;
@@ -802,7 +802,6 @@ async function apiStatusFresh(env) {
         Number(meta.w_rows) >= (Number(env.HISTORY_DAILY_WRITES) || 70000),
       newest_synced: meta.g_head_ts || null,
       last_run: meta.last_run || null,
-      last_tick: meta.last_tick || null,
       has_api_key: Boolean(env.WARERA_API_KEY),
       order: meta.order || null,
       errors: Object.fromEntries(Object.entries(meta).filter(([k]) => k.startsWith("err_"))),
