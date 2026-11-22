@@ -1028,13 +1028,18 @@
       syncNote(); if (!pop.hidden) renderCal();
       const age = s.last_run ? Date.now() - Date.parse(s.last_run) : Infinity;
       $("stale").hidden = age < STALE_MS;
+      // sljedeća ponoć UTC (tada se resetira dnevni limit baze), u lokalnom vremenu korisnika
+      const nextUtcMidnight = new Date(Math.floor(Date.now() / 86400000 + 1) * 86400000).toISOString();
       if (age >= STALE_MS) $("stale").textContent = s.last_run
-        ? `Podaci kasne: zadnje osvježenje bilo je ${fmtDT(s.last_run)} (prije ${Math.round(age / 60000)} min). Najnovije transakcije možda još nisu prikazane.`
+        ? `Baza se ne ažurira od ${fmtDT(s.last_run)} (prije ${Math.round(age / 60000)} min).` +
+          (s.newest_synced ? ` Zadnja zabilježena transakcija: ${fmtDT(s.newest_synced)}.` : "") +
+          ` Najčešći uzrok je potrošen dnevni limit baze; tada se upis nastavlja u ${fmtDT(nextUtcMidnight).slice(11)} (ponoć UTC) i propuštene transakcije se nadoknade.`
         : "Podaci se trenutno ne osvježavaju.";
       $("status").innerHTML =
         `Pohranjeno transakcija: <b>${fmt(s.transactions)}</b> · igrača: <b>${fmt(s.players)}</b> · ` +
-        (s.backfill_done ? "povijest potpuno učitana" : "učitavanje povijesti je u tijeku" + (s.history_reached ? " (do " + esc(fmtDT(s.history_reached).slice(0, 10)) + ")" : "") + (s.history_paused ? ", danas pauzirano zbog dnevnog limita baze, nastavlja se u ponoć UTC" : "…")) +
-        (s.last_run ? ` · zadnje osvježenje: <b>${esc(new Date(s.last_run).toLocaleTimeString("hr-HR"))}</b>` : "") +
+        (s.backfill_done ? "podaci potpuni od " + esc(fmtDT(s.history_reached || s.complete_from || "")) : "učitavanje povijesti je u tijeku" + (s.history_reached ? " (do " + esc(fmtDT(s.history_reached).slice(0, 10)) + ")" : "") + (s.history_paused ? ", danas pauzirano zbog dnevnog limita baze, nastavlja se u ponoć UTC" : "…")) +
+        (s.newest_synced ? ` · zadnja zabilježena transakcija: <b>${esc(fmtDT(s.newest_synced))}</b>` : "") +
+        (s.last_run ? ` · zadnje osvježenje: <b>${esc(fmtDT(s.last_run))}</b>` : "") +
         (errs.length ? `<br><span class="err">${esc(errs.join(" | "))}</span>` : "");
     } catch {}
   }
