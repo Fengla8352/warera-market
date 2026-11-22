@@ -77,8 +77,9 @@ export function makeWorld({ txCount = 6000, days = 40, seed = 1 } = {}) {
   return { users, txs, now };
 }
 
-// lažni WarEra tRPC API nad svijetom; vraća brojač poziva
-export function installFakeApi(world) {
+// lažni WarEra tRPC API nad svijetom; vraća brojač poziva.
+// globalDays: koliko dana unatrag seže globalni popis (pravi API: ~3), filter userId vraća cijelu povijest igrača.
+export function installFakeApi(world, { globalDays = Infinity } = {}) {
   const calls = { n: 0 };
   globalThis.fetch = async (url, opts = {}) => {
     calls.n++;
@@ -91,9 +92,18 @@ export function installFakeApi(world) {
     }
     const input = JSON.parse(u.searchParams.get("input"));
     if (proc === "transaction.getPaginatedTransactions") {
+      const minTs = Number.isFinite(globalDays) ? new Date(Date.now() - globalDays * DAY).toISOString() : "";
+      const list = input.userId
+        ? world.txs.filter((t) => t.buyerId === input.userId || t.sellerId === input.userId)
+        : world.txs.filter((t) => t.createdAt >= minTs);
       const off = input.cursor ? Number(input.cursor) : 0;
-      const items = world.txs.slice(off, off + input.limit);
-      return ok({ result: { data: { items, nextCursor: off + input.limit < world.txs.length ? String(off + input.limit) : null } } });
+      const items = list.slice(off, off + input.limit);
+      return ok({ result: { data: { items, nextCursor: off + input.limit < list.length ? String(off + input.limit) : null } } });
+    }
+    if (proc === "user.getUsersByCountry") {
+      const all = [...world.users.entries()].filter(([, u]) => u.country === input.countryId).map(([id]) => ({ _id: id }));
+      const off = input.cursor ? Number(input.cursor) : 0;
+      return ok({ result: { data: { items: all.slice(off, off + input.limit), nextCursor: off + input.limit < all.length ? String(off + input.limit) : null } } });
     }
     if (proc === "country.getAllCountries") return ok({ result: { data: COUNTRIES.map(([_id, name]) => ({ _id, name })) } });
     if (proc === "alliance.getManyPaginated") return ok({ result: { data: { items: [] } } });

@@ -22,7 +22,7 @@ function expected(world, storedIds) {
 async function synced(opts = {}, ticks = 40) {
   const world = makeWorld(opts.world);
   const { db, DB, stats } = makeD1();
-  const calls = installFakeApi(world);
+  const calls = installFakeApi(world, opts.api);
   const worker = await loadWorker();
   const env = baseEnv(DB, opts.env);
   const limits = await runTicks(worker, env, db, stats, calls, ticks);
@@ -132,4 +132,30 @@ test("nepromijenjeno stanje ne troši upise u meta", async () => {
   await runTicks(s.worker, s.env, s.db, s.stats, s.calls, 1);
   const after = s.db.prepare("SELECT key, value FROM meta WHERE key NOT IN ('last_run','w_rows','w_day','lock_until','stale_at')").all();
   assert.deepEqual(after, before);
+});
+
+test("povijest po igraču dohvati 30 dana i kad globalni popis seže samo 3 dana", async () => {
+  const { world, db, worker, env } = await synced({ api: { globalDays: 3 } }, 80);
+  const stored = new Set(db.prepare("SELECT id FROM transactions").all().map((r) => r.id));
+  const cutoff = new Date(Date.now() - 30 * DAY).toISOString();
+  const tracked = (t) => TRACKED.has(world.users.get(t.buyerId).country) || TRACKED.has(world.users.get(t.sellerId).country);
+  const missing = world.txs.filter((t) => t.createdAt >= cutoff && tracked(t) && !stored.has(t._id));
+  assert.equal(missing.length, 0, `nedostaje ${missing.length} transakcija starijih od 3 dana`);
+  // statistika i dalje točna, bez dvostrukog brojanja (transakcija dvaju praćenih igrača dođe dvaput)
+  const exp = expected(world, stored);
+  for (const r of db.prepare("SELECT user_id, SUM(bought_qty) bq, SUM(sold_qty) sq FROM player_item_daily GROUP BY user_id").all()) {
+    assert.equal(r.bq, exp.get(r.user_id).bq); assert.equal(r.sq, exp.get(r.user_id).sq);
+  }
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM players WHERE hist_done = 0").get().n, 0);
+  const st = await get(worker, env, "/api/status");
+  assert.equal(st.body.backfill_done, true);
+  assert.equal(st.body.history_players_left, 0);
+  assert.ok(st.body.complete_from <= new Date(Date.now() - 29 * DAY).toISOString(), "potpuno za 30 dana");
+});
+
+test("povijest po igraču poštuje dnevni proračun", async () => {
+  const { db } = await synced({ api: { globalDays: 3 }, env: { HISTORY_DAILY_WRITES: "3000", HISTORY_EOD_FROM: "99:99" } }, 40);
+  assert.ok(db.prepare("SELECT COUNT(*) n FROM players WHERE hist_done = 0").get().n > 0, "povijest je trebala stati na proračunu");
+  const w = Number(db.prepare("SELECT value FROM meta WHERE key = 'w_rows'").get().value);
+  assert.ok(w < 3000 + 2000, `proračun prekoračen previše: ${w}`);
 });

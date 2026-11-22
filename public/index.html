@@ -1037,7 +1037,10 @@
         : "Podaci se trenutno ne osvježavaju.";
       $("status").innerHTML =
         `Pohranjeno transakcija: <b>${fmt(s.transactions)}</b> · igrača: <b>${fmt(s.players)}</b> · ` +
-        (s.backfill_done ? "podaci potpuni od " + esc(fmtDT(s.history_reached || s.complete_from || "")) : "učitavanje povijesti je u tijeku" + (s.history_reached ? " (do " + esc(fmtDT(s.history_reached).slice(0, 10)) + ")" : "") + (s.history_paused ? ", danas pauzirano zbog dnevnog limita baze, nastavlja se u ponoć UTC" : "…")) +
+        (s.backfill_done ? "podaci potpuni od " + esc(fmtDT(s.complete_from || s.history_reached || ""))
+          : "podaci potpuni od " + esc(fmtDT(s.complete_from || s.history_reached || "")) +
+            (s.history_players_left > 0 ? ` · učitavanje povijesti po igračima: još <b>${fmt(s.history_players_left)}</b> igrača` : " · učitavanje povijesti je u tijeku") +
+            (s.history_paused ? " (danas pauzirano zbog dnevnog limita baze)" : "")) +
         (s.newest_synced ? ` · zadnja zabilježena transakcija: <b>${esc(fmtDT(s.newest_synced))}</b>` : "") +
         (s.last_run ? ` · zadnje osvježenje: <b>${esc(fmtDT(s.last_run))}</b>` : "") +
         (errs.length ? `<br><span class="err">${esc(errs.join(" | "))}</span>` : "");

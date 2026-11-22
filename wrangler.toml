@@ -36,5 +36,10 @@ HISTORY_DAYS = "30"
 # Besplatni D1 dopušta 100 000; ostatak ostaje za nove transakcije i ostale upise, da praćenje uživo ne stane.
 HISTORY_DAILY_WRITES = "70000"
 
+# Od HISTORY_EOD_FROM (UTC, 23:30 = 00:30 po hrvatskom zimskom vremenu) do ponoći proračun za povijest raste na
+# HISTORY_EOD_WRITES, da se iskoristi ostatak dnevnog limita prije reseta (ostavlja rezervu za upise koje brojač ne vidi).
+HISTORY_EOD_FROM = "23:30"
+HISTORY_EOD_WRITES = "85000"
+
 # "trading" = tržište resursa (hrana, municija, građevinski materijal...); "itemMarket" = oprema/oružje
 TX_TYPE = "trading"

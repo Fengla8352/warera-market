@@ -33,8 +33,11 @@ CREATE TABLE IF NOT EXISTS players (
   name       TEXT,
   country_id TEXT,
   fetched_at INTEGER NOT NULL,
-  avatar     TEXT -- adresa profilne slike (media.warera.io/avatars/...)
+  avatar     TEXT, -- adresa profilne slike (media.warera.io/avatars/...)
+  hist_cursor TEXT,                       -- povijest po igraču: kursor za sljedeću stranicu
+  hist_done   INTEGER NOT NULL DEFAULT 1  -- 0 = povijest igrača (HISTORY_DAYS) još se učitava
 );
+CREATE INDEX IF NOT EXISTS idx_players_hist ON players(hist_done) WHERE hist_done = 0;
 CREATE INDEX IF NOT EXISTS idx_players_country ON players(country_id);
 CREATE INDEX IF NOT EXISTS idx_players_name ON players(name COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_players_fetched ON players(fetched_at);

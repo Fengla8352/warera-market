@@ -149,6 +149,7 @@ async function refreshStatic(env, meta) {
     );
   }
   if (stmts.length) await env.DB.batch(stmts);
+  await syncRoster(env);
   await setMeta(env, "static_at", Date.now());
 }
 
@@ -175,7 +176,7 @@ async function fetchPage(env, cursor) {
 // zbroj upisanih redaka iz rezultata D1 batcha (uključuje okidač i indekse)
 const rowsWritten = (res) => (res || []).reduce((n, r) => n + (Number(r?.meta?.rows_written) || 0), 0);
 
-async function storePage(env, items) {
+async function storePage(env, items, extra = []) {
   const stmts = [];
   for (const t of items) {
     stmts.push(
@@ -193,7 +194,16 @@ async function storePage(env, items) {
       ),
     );
   }
+  stmts.push(...extra);
   return stmts.length ? rowsWritten(await env.DB.batch(stmts)) : 0;
+}
+
+// transakcije jednog igrača (kupnje i prodaje), novije prve; API ih čuva mjesecima unatrag
+async function fetchUserPage(env, userId, cursor) {
+  const input = { limit: 100, transactionType: txType(env), userId };
+  if (cursor) input.cursor = cursor;
+  const data = await trpc(env, "transaction.getPaginatedTransactions", input);
+  return { items: data?.items || [], nextCursor: data?.nextCursor || null };
 }
 
 const tsOf = (t) => new Date(t.createdAt).toISOString();
@@ -225,6 +235,35 @@ async function trackedCountries(env) {
   return val;
 }
 
+/* --- popis igrača praćenih država ------------------------------------ */
+// user.getUsersByCountry vraća sve građane države; igrači koji nisu trgovali u zadnja ~3 dana
+// inače ne bi bili poznati, pa im se ne bi dohvatila povijest. Novi se upisuju s fetched_at = 0
+// (enrichPlayers ih zatim dohvati, a prvi dohvat postavi hist_done = 0).
+async function syncRoster(env) {
+  const tracked = await trackedCountries(env);
+  if (!tracked?.ids?.length) return;
+  const ids = new Set();
+  for (const countryId of tracked.ids) {
+    let cursor;
+    for (let i = 0; i < 20; i++) {
+      const data = await trpc(env, "user.getUsersByCountry", { countryId, limit: 100, ...(cursor ? { cursor } : {}) });
+      for (const u of data?.items || []) if (u?._id) ids.add(String(u._id));
+      cursor = data?.nextCursor;
+      if (!cursor || !data?.items?.length) break;
+    }
+  }
+  const list = [...ids];
+  for (let i = 0; i < list.length; i += 90) {
+    const chunk = list.slice(i, i + 90);
+    const { results } = await env.DB.prepare(`SELECT user_id FROM players WHERE user_id IN (${chunk.map(() => "?").join(",")})`)
+      .bind(...chunk)
+      .all();
+    const known = new Set(results.map((r) => r.user_id));
+    const fresh = chunk.filter((id) => !known.has(id));
+    if (fresh.length) await env.DB.batch(fresh.map((id) => env.DB.prepare("INSERT OR IGNORE INTO players (user_id, fetched_at) VALUES (?, 0)").bind(id)));
+  }
+}
+
 /* --- država igrača: memorija -> D1 -> user.getUserLite --------------- */
 // player_country: država (i ime) za SVE provjerene igrače, 1 redak bez indeksa (jeftin upis).
 // players: samo igrači iz praćenih država (imaju indekse za pretragu i rang listu).
@@ -254,10 +293,12 @@ function upsertPlayerCountry(env, id, u, now) {
 
 function upsertPlayer(env, id, u, now) {
   return env.DB.prepare(
-    "INSERT INTO players (user_id, name, country_id, fetched_at, avatar) VALUES (?, ?, ?, ?, ?) " +
+    "INSERT INTO players (user_id, name, country_id, fetched_at, avatar, hist_done) VALUES (?, ?, ?, ?, ?, 0) " +
       "ON CONFLICT(user_id) DO UPDATE SET name = COALESCE(excluded.name, name), " +
       "country_id = COALESCE(excluded.country_id, country_id), fetched_at = excluded.fetched_at, " +
-      "avatar = COALESCE(excluded.avatar, avatar)",
+      "avatar = COALESCE(excluded.avatar, avatar), " +
+      // igrač kojeg je okidač upisao (fetched_at = 0) prvi put je dohvaćen: treba mu povijest
+      "hist_done = CASE WHEN players.fetched_at = 0 THEN 0 ELSE players.hist_done END",
   ).bind(id, u?.name ?? null, u?.country ?? null, now, u?.avatar ?? null);
 }
 
@@ -338,7 +379,11 @@ async function syncTransactions(env, meta, pages) {
   // Kad se potroši, povijest čeka iduću ponoć UTC, a nove transakcije se i dalje prate.
   const today = new Date().toISOString().slice(0, 10);
   const writeBase = meta.w_day === today ? Number(meta.w_rows) || 0 : 0;
-  const histLimit = Number(env.HISTORY_DAILY_WRITES) || 70000;
+  // od HISTORY_EOD_FROM (UTC) do ponoći proračun se podiže na HISTORY_EOD_WRITES, da se iskoristi ostatak limita
+  const eodFrom = /^\d{2}:\d{2}$/.test(env.HISTORY_EOD_FROM || "") ? env.HISTORY_EOD_FROM : "23:30";
+  const histLimit = new Date().toISOString().slice(11, 16) >= eodFrom
+    ? Number(env.HISTORY_EOD_WRITES) || 85000
+    : Number(env.HISTORY_DAILY_WRITES) || 70000;
   let stored = 0;
   const writesToday = () => writeBase + stored + lookups.written;
   const days = Number(env.HISTORY_DAYS);
@@ -421,8 +466,40 @@ async function syncTransactions(env, meta, pages) {
         st.done = true;
       }
     }
+
+    // 4) povijest po igraču: globalni popis seže samo ~3 dana, pa se starija povijest praćenih igrača
+    //    dohvaća filtrom userId, do HISTORY_DAYS unatrag (svaki igrač jednom; novi igrači automatski)
+    if (trackedSet && cutoff && !stalled && pages > 0 && writesToday() < histLimit) {
+      const ids = [...trackedSet];
+      const { results: queue } = await env.DB.prepare(
+        "SELECT user_id, hist_cursor FROM players WHERE hist_done = 0 AND fetched_at > 0 " +
+          `AND country_id IN (${ids.map(() => "?").join(",")}) ORDER BY rowid LIMIT 12`,
+      )
+        .bind(...ids)
+        .all();
+      st.playersDone = queue.length === 0;
+      const typed = (t) => t._id && t.buyerId && t.sellerId && (!t.transactionType || t.transactionType === txType(env));
+      for (const pl of queue) {
+        let cursor = pl.hist_cursor;
+        while (pages > 0 && writesToday() < histLimit) {
+          const page = await fetchUserPage(env, pl.user_id, cursor);
+          pages--;
+          const keep = page.items.filter((t) => typed(t) && tsOf(t) >= cutoff);
+          const oldest = minTs(page.items);
+          const done = !page.nextCursor || !page.items.length || (oldest !== null && oldest < cutoff);
+          cursor = done ? null : page.nextCursor;
+          const upd = env.DB.prepare("UPDATE players SET hist_cursor = ?, hist_done = ? WHERE user_id = ?")
+            .bind(cursor, done ? 1 : 0, pl.user_id);
+          stored += await storePage(env, keep, [upd]);
+          if (done) break;
+        }
+        if (pages <= 0 || writesToday() >= histLimit) break;
+      }
+    }
   } finally {
     await setMetaMany(env, {
+      // nepoznato (korak nije išao) = zadrži prethodno stanje
+      p_hist_done: st.playersDone === undefined ? meta.p_hist_done ?? null : st.playersDone ? "1" : null,
       g_head_ts: st.head,
       g_fwd_cursor: st.fwdCursor,
       g_fwd_new_head: st.fwdHead,
@@ -900,7 +977,7 @@ async function apiStatus(env, ctx, request) {
 
 async function apiStatusFresh(env) {
   const trackedInfo = await trackedCountries(env);
-  const [meta, tx, players, named, countries, mapped, alliances] = await Promise.all([
+  const [meta, tx, players, named, countries, mapped, alliances, hist] = await Promise.all([
     getMeta(env),
     env.DB.prepare("SELECT MAX(rowid) AS n FROM transactions").first(),
     // igrači se nikad ne brišu, pa je MAX(rowid) broj igrača; "s imenom" = već dohvaćeni (indeks na fetched_at)
@@ -909,7 +986,13 @@ async function apiStatusFresh(env) {
     env.DB.prepare("SELECT COUNT(*) AS n FROM countries").first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM countries WHERE alliance_id IS NOT NULL").first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM alliances").first(),
+    // povijest po igraču: koliko praćenih igrača još čeka (djelomični indeks na hist_done = 0)
+    env.DB.prepare("SELECT COUNT(*) AS n FROM players WHERE hist_done = 0 AND fetched_at > 0 AND country_id IN (SELECT country_id FROM tracked)").first(),
   ]);
+  const days = Number(env.HISTORY_DAYS);
+  const playersDone = meta.p_hist_done === "1" && !(hist?.n > 0);
+  // kad je povijest svih praćenih igrača učitana, podaci su potpuni za zadnjih HISTORY_DAYS dana
+  const completeFrom = playersDone && days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString() : meta.g_back_oldest || null;
   return json(
     {
       transactions: tx?.n || 0,
@@ -919,13 +1002,14 @@ async function apiStatusFresh(env) {
       countries_in_alliance: mapped?.n || 0,
       alliances: alliances?.n || 0,
       tracked: trackedInfo ? trackedInfo : "sve države",
-      backfill_done: meta.g_back_done === "1",
+      backfill_done: meta.g_back_done === "1" && playersDone,
+      history_players_left: hist?.n ?? null,
       history_reached: meta.g_back_oldest || null,
       // podaci su potpuni od ovog trenutka (sve starije je djelomično, od ranijih verzija)
-      complete_from: meta.g_back_oldest || null,
+      complete_from: completeFrom,
       writes_today: meta.w_day === new Date().toISOString().slice(0, 10) ? Number(meta.w_rows) || 0 : 0,
       history_paused:
-        meta.g_back_done !== "1" &&
+        !(meta.g_back_done === "1" && playersDone) &&
         meta.w_day === new Date().toISOString().slice(0, 10) &&
         Number(meta.w_rows) >= (Number(env.HISTORY_DAILY_WRITES) || 70000),
       newest_synced: meta.g_head_ts || null,
