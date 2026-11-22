@@ -7,7 +7,8 @@
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",
     "db:init": "wrangler d1 execute warera-market --remote --file=schema.sql",
-    "db:init:local": "wrangler d1 execute warera-market --local --file=schema.sql"
+    "db:init:local": "wrangler d1 execute warera-market --local --file=schema.sql",
+    "test": "node --test \"tests/**/*.test.mjs\""
   },
   "devDependencies": {
     "wrangler": "^4"

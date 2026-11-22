@@ -177,7 +177,37 @@
   .ov li .num { grid-column: 3; grid-row: 1; font-variant-numeric: tabular-nums; color: var(--text-2); }
   .ov li .num b { color: var(--rank); }
   .ov li.empty { display: block; color: var(--muted); font-size: 13px; }
+  .seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; gap: 2px; }
+  .seg button { background: none; border: 0; border-radius: 6px; padding: 3px 10px; font: inherit; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .seg button[aria-pressed=true] { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: var(--elev); }
+  .ov-today-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .ov-today-head h3 { margin: 0; }
+
+  /* cijene svih itema */
+  .prices { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin-top: 22px; box-shadow: var(--elev); overflow: hidden; }
+  .prices-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 14px 16px 6px; }
+  .prices-head h3 { margin: 0; font-size: 14px; color: var(--text); }
+  .prices-head small { color: var(--muted); font-size: 12px; }
+  .prices table { min-width: 560px; }
+  .prices td, .prices th { padding: 7px 14px; }
+  .prices tbody tr { cursor: pointer; }
+  .prices tbody tr.cur { background: var(--hover); }
+  .prices .item-cell .tile { --s: 26px !important; cursor: pointer; opacity: 1 !important; border-radius: 5px; }
+  .prices .item-cell .tile:hover { transform: none; }
+  .chg { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .chg.up::before { content: "▲ "; font-size: 10px; } .chg.down::before { content: "▼ "; font-size: 10px; }
+  .chg.flat { color: var(--muted); }
+  .spark { display: block; width: 110px; height: 26px; overflow: visible; }
+  .spark path { fill: none; stroke: var(--rank); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
   @media (max-width: 760px) { .ov { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) {
+    .prices table { min-width: 0; }
+    .prices .m-hide { display: none; }
+    .prices td, .prices th { padding: 7px 6px; }
+    .prices td:first-child, .prices th:first-child { padding-left: 12px; }
+    .prices .item-cell { white-space: normal; }
+    .spark { width: 64px; }
+  }
   @media (max-width: 560px) { .kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ov th { letter-spacing: 0; font-size: 11px; } .ov-card { padding: 12px; } }
 
   /* tablica */
@@ -340,7 +370,8 @@
         <table><thead><tr><th>Država</th><th class="num">Kupljeno</th><th class="num">Potrošeno</th><th class="num" title="Prosječna cijena po komadu">Cijena</th></tr></thead><tbody id="ov-countries"></tbody></table>
       </div>
       <div class="ov-card">
-        <h3 id="ov-today-h">Danas najviše kupili</h3>
+        <div class="ov-today-head"><h3 id="ov-today-h">Danas</h3>
+          <div class="seg" role="group" aria-label="Kupci ili prodavači"><button type="button" data-m="buy" aria-pressed="true">Kupci</button><button type="button" data-m="sell" aria-pressed="false">Prodavači</button></div></div>
         <ol id="ov-today"></ol>
       </div>
     </div>
@@ -364,6 +395,13 @@
     <span id="page"></span>
     <button type="button" id="next">Sljedeća →</button>
   </div>
+  <section class="prices" id="prices" aria-labelledby="prices-h">
+    <div class="prices-head"><h3 id="prices-h">Cijene svih itema</h3><small id="prices-sub">prosječna cijena po komadu, zadnjih 14 dana (UTC) · klik odabire item</small></div>
+    <div class="scroll"><table>
+      <thead><tr><th>Item</th><th class="num">Danas</th><th class="num m-hide">Jučer</th><th class="num">Promjena</th><th>14 dana</th><th class="num m-hide">Promet danas</th></tr></thead>
+      <tbody id="prices-rows"><tr><td colspan="6" class="empty">Učitavanje…</td></tr></tbody>
+    </table></div>
+  </section>
   <div class="status" id="status"></div>
 </div>
 
@@ -684,7 +722,7 @@
     $("page").textContent = data.rows.length ? `Prikaz ${state.offset + 1}–${state.offset + data.rows.length}` : "";
   }
 
-  const reload = () => { state.offset = 0; load(); loadOverview(); syncNote(); };
+  const reload = () => { state.offset = 0; load(); loadOverview(); syncNote(); loadPrices(); };
 
   let timer;
   $("q").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(reload, 300); });
@@ -802,7 +840,7 @@
   $("dlg").addEventListener("click", (e) => { if (e.target === $("dlg")) $("dlg").close(); });
 
   /* ---------- pregled iznad tablice: cijena, sažetak, top danas ---------- */
-  let ovKey = "";
+  let ovKey = null;
   async function loadOverview() {
     const p = periodParams(new URLSearchParams());
     if ($("country").value) p.set("country", $("country").value);
@@ -829,12 +867,28 @@
       `<tr><td>${esc(r.country_name || "–")}</td><td class="num">${fmt(r.bought)}</td><td class="num">${fmtM(r.spent)}</td>` +
       `<td class="num">${r.bought ? fmtM(r.spent / r.bought) : "–"}</td></tr>`).join("")
       : `<tr><td colspan="4" class="empty">Nema prometa.</td></tr>`;
-    $("ov-today-h").textContent = `Danas najviše kupili · ${isoToHr(d.today)}`;
-    $("ov-today").innerHTML = d.today_top.length ? d.today_top.map((r, i) =>
-      `<li data-id="${esc(r.user_id)}" data-av="${esc(r.avatar || "")}"><span class="rk">${i + 1}</span><span class="who">${avatar(r.avatar, r.name || r.user_id)}<button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span>` +
-      `<small>${esc(r.country_name || "")}</small><span class="num"><b>${fmt(r.bought)}</b> · ${fmtM(r.spent)}</span></li>`).join("")
-      : `<li class="empty">Danas još nema kupnji ovog itema.</li>`;
+    state.ovToday = d;
+    renderToday();
   }
+  state.todayMode = "buy";
+  function renderToday() {
+    const d = state.ovToday;
+    if (!d) return;
+    const sell = state.todayMode === "sell";
+    $("ov-today-h").textContent = `Danas · ${isoToHr(d.today)}`;
+    const list = (sell ? d.today_sellers : d.today_top) || [];
+    $("ov-today").innerHTML = list.length ? list.map((r, i) =>
+      `<li data-id="${esc(r.user_id)}" data-av="${esc(r.avatar || "")}"><span class="rk">${i + 1}</span><span class="who">${avatar(r.avatar, r.name || r.user_id)}<button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span>` +
+      `<small>${esc(r.country_name || "")}</small><span class="num"><b>${fmt(sell ? r.sold : r.bought)}</b> · ${fmtM(sell ? r.earned : r.spent)}</span></li>`).join("")
+      : `<li class="empty">Danas još nema ${sell ? "prodaja" : "kupnji"} ovog itema.</li>`;
+  }
+  document.querySelector(".seg").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-m]");
+    if (!b) return;
+    state.todayMode = b.dataset.m;
+    for (const x of document.querySelectorAll(".seg button")) x.setAttribute("aria-pressed", String(x === b));
+    renderToday();
+  });
 
   // linijski graf prosječne cijene po danu (jedna serija, bez legende; naslov je imenuje)
   function renderPrice(days) {
@@ -899,6 +953,60 @@
     const li = e.target.closest("li[data-id]");
     if (li) openPlayer(li.dataset.id, li.querySelector("button").textContent, li.dataset.av);
   });
+
+  /* ---------- cijene svih itema (učitava se kad se dođe do tog dijela stranice) ---------- */
+  let prKey = null, prSeen = false;
+  async function loadPrices() {
+    if (!prSeen) return;
+    const p = new URLSearchParams();
+    if ($("country").value) p.set("country", $("country").value);
+    const key = p.toString();
+    if (key === prKey) return syncPriceRow();
+    prKey = key;
+    let d;
+    try { d = await api("/api/prices?" + p); } catch { $("prices-rows").innerHTML = `<tr><td colspan="6" class="empty err">Greška pri dohvaćanju cijena.</td></tr>`; prKey = null; return; }
+    if (key !== prKey) return;
+    const yest = addDays(d.today, -1);
+    const by = new Map();
+    for (const r of d.rows) { if (!by.has(r.item_code)) by.set(r.item_code, new Map()); if (r.qty > 0) by.get(r.item_code).set(r.day, r); }
+    const days = []; for (let x = d.from; x <= d.today; x = addDays(x, 1)) days.push(x);
+    const items = [...state.meta.values()];
+    $("prices-rows").innerHTML = items.map((m) => {
+      const h = by.get(m.code) || new Map();
+      const pr = (day) => { const r = h.get(day); return r ? r.money / r.qty : null; };
+      const t = pr(d.today), y = pr(yest);
+      const ch = t != null && y != null && y > 0 ? (t - y) / y * 100 : null;
+      const cls = ch == null ? "" : Math.abs(ch) < 0.05 ? "flat" : ch > 0 ? "up" : "down";
+      const tq = h.get(d.today)?.qty || 0;
+      return `<tr data-code="${esc(m.code)}"><td><span class="item-cell">${tile(m.code)}${esc(m.name)}</span></td>` +
+        `<td class="num money">${t == null ? "–" : fmtM(t)}</td><td class="num money m-hide">${y == null ? "–" : fmtM(y)}</td>` +
+        `<td class="num"><span class="chg ${cls}">${ch == null ? "–" : (ch > 0 ? "+" : "") + ch.toLocaleString("hr-HR", { maximumFractionDigits: 1, minimumFractionDigits: 1 }) + " %"}</span></td>` +
+        `<td>${spark(days.map(pr))}</td><td class="num m-hide">${tq ? fmt(tq) : "–"}</td></tr>`;
+    }).join("");
+    syncPriceRow();
+  }
+  function spark(vals) {
+    const pts = vals.map((v, i) => [i, v]).filter(([, v]) => v != null);
+    if (!pts.length) return `<span class="dsub">nema prometa</span>`;
+    const lo = Math.min(...pts.map((p) => p[1])), hi = Math.max(...pts.map((p) => p[1])), n = vals.length;
+    const X = (i) => (n === 1 ? 50 : (i / (n - 1)) * 100), Y = (v) => (hi === lo ? 12 : 22 - ((v - lo) / (hi - lo)) * 20);
+    let d = "", prev = -2;
+    for (const [i, v] of pts) { d += `${i === prev + 1 ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)} `; prev = i; }
+    return `<svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><path d="${d}"/></svg>`;
+  }
+  function syncPriceRow() {
+    for (const tr of $("prices-rows").querySelectorAll("tr[data-code]")) tr.classList.toggle("cur", tr.dataset.code === state.item);
+  }
+  $("prices-rows").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr[data-code]");
+    if (!tr || tr.dataset.code === state.item) return;
+    state.item = tr.dataset.code; store.set("wm_item", state.item);
+    syncItems(); reload(); syncPriceRow();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver((ents, obs) => { if (ents.some((x) => x.isIntersecting)) { prSeen = true; obs.disconnect(); loadPrices(); } }, { rootMargin: "300px" }).observe($("prices"));
+  } else { prSeen = true; }
 
   /* ---------- status: kašnjenje i potpunost podataka ---------- */
   const STALE_MS = 5 * 60 * 1000;

@@ -40,6 +40,21 @@ Secret `WARERA_API_KEY` postavlja se u Workeru (Settings → Variables and Secre
 3. Kasnije migracije (jednom, u D1 Consoleu, prije objave koda koji ih treba): `migration-2.sql` (indeksi za prozor igrača), `migration-3.sql` (indeks `players(fetched_at)`), `migration-4.sql` (tablice `player_country` i `tracked`, novi okidač), `migration-5.sql` (potrošeni i zarađeni novac u `player_item_daily`), `migration-6.sql` (indeks `(item_code, day)` za pregled iznad tablice), `migration-7.sql` (profilne slike igrača, stupac `players.avatar`).
 4. Provjeri `/api/status`: `has_api_key: true`, `errors` prazan, `tracked.missing` prazan i `transactions` raste.
 
+## Testovi
+
+`npm test` pokreće testove iz `tests/` (potreban je Node 22.5 ili noviji, zbog ugrađenog `node:sqlite`; nije potreban Cloudflare ni API ključ).
+Testovi koriste pravu SQLite bazu sa `schema.sql` i lažni WarEra API s izmišljenim igračima, pa provjeravaju:
+
+- da se spremaju sve transakcije praćenih država unutar `HISTORY_DAYS` i ništa drugo,
+- da dnevna statistika (količine, potrošeno, zarađeno) točno odgovara transakcijama,
+- da su u `players` samo igrači praćenih država, s imenom i profilnom slikom,
+- da cron prolaz ostaje ispod 50 D1 upita i 50 API poziva (besplatni plan),
+- da dnevni proračun zaustavlja povijest, a nove transakcije se i dalje spremaju,
+- odgovore API-ja (`/api/ranking`, `/api/player`, `/api/overview`, `/api/prices`, `/api/status`),
+- da nepromijenjeno stanje ne troši upise.
+
+Pokreni ih prije svake objave koja dira `src/` ili `schema.sql`.
+
 ## Ikonice i boje
 
 Ikonice su u `public/icons/<kod>.webp`. Pozadina svake ikonice ima boju razine kao u igri (siva, zelena, plava, ljubičasta, crvena, maslinasta); razina i naziv svakog itema nalaze se u `src/items.js`.

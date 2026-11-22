@@ -699,7 +699,7 @@ async function apiOverview(env, url, ctx, request) {
   }
   scope(w2, a2);
 
-  const [byCountry, byDay, top] = await env.DB.batch([
+  const [byCountry, byDay, top, topSell] = await env.DB.batch([
     env.DB.prepare(
       "SELECT p.country_id, c.name AS country_name, SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold, " +
         "ROUND(SUM(d.bought_money), 3) AS spent, ROUND(SUM(d.sold_money), 3) AS earned, " +
@@ -716,12 +716,50 @@ async function apiOverview(env, url, ctx, request) {
       "SELECT d.user_id, p.name, p.avatar, c.name AS country_name, SUM(d.bought_qty) AS bought, ROUND(SUM(d.bought_money), 3) AS spent " +
         FROM + "WHERE " + w2.join(" AND ") + " AND d.bought_qty > 0 GROUP BY d.user_id ORDER BY bought DESC, spent DESC LIMIT 5",
     ).bind(...a2),
+    env.DB.prepare(
+      "SELECT d.user_id, p.name, p.avatar, c.name AS country_name, SUM(d.sold_qty) AS sold, ROUND(SUM(d.sold_money), 3) AS earned " +
+        FROM + "WHERE " + w2.join(" AND ") + " AND d.sold_qty > 0 GROUP BY d.user_id ORDER BY sold DESC, earned DESC LIMIT 5",
+    ).bind(...a2),
   ]);
   const res = json(
-    { by_country: byCountry.results, by_day: byDay.results, today, today_top: top.results },
+    { by_country: byCountry.results, by_day: byDay.results, today, today_top: top.results, today_sellers: topSell.results },
     200,
     { "cache-control": "public, max-age=120" },
   );
+  if (cache) ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  return res;
+}
+
+// cijene svih itema: prosječna cijena po danu za zadnjih PRICE_DAYS dana (UTC), iz prometa igrača praćenih država
+const PRICE_DAYS = 14;
+async function apiPrices(env, url, ctx, request) {
+  const cache = typeof caches !== "undefined" ? caches.default : null;
+  const cacheKey = new Request(request.url);
+  if (cache) {
+    const hit = await cache.match(cacheKey);
+    if (hit) return hit;
+  }
+  const country = url.searchParams.get("country");
+  const tracked = await trackedCountries(env);
+  const today = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.parse(today + "T00:00:00Z") - (PRICE_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+  const where = ["d.day >= ?"], args = [from];
+  if (tracked && tracked.ids.length) {
+    where.push(`p.country_id IN (${tracked.ids.map(() => "?").join(",")})`);
+    args.push(...tracked.ids);
+  }
+  if (country) {
+    where.push("p.country_id = ?");
+    args.push(country);
+  }
+  const { results } = await env.DB.prepare(
+    "SELECT d.item_code, d.day, SUM(d.bought_qty + d.sold_qty) AS qty, ROUND(SUM(d.bought_money + d.sold_money), 3) AS money " +
+      "FROM player_item_daily d JOIN players p ON p.user_id = d.user_id " +
+      `WHERE ${where.join(" AND ")} GROUP BY d.item_code, d.day ORDER BY d.item_code, d.day`,
+  )
+    .bind(...args)
+    .all();
+  const res = json({ from, today, rows: results }, 200, { "cache-control": "public, max-age=600" });
   if (cache) ctx.waitUntil(cache.put(cacheKey, res.clone()));
   return res;
 }
@@ -909,6 +947,7 @@ export default {
       if (path === "/api/ranking") return await apiRanking(env, url);
       if (path === "/api/filters") return await apiFilters(env);
       if (path === "/api/overview") return await apiOverview(env, url, ctx, request);
+      if (path === "/api/prices") return await apiPrices(env, url, ctx, request);
       if (path === "/api/status") return await apiStatus(env, ctx, request);
       if (path.startsWith("/api/player/")) {
         return await apiPlayer(env, decodeURIComponent(path.slice("/api/player/".length)), url, ctx, request);
