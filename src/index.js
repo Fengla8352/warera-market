@@ -26,13 +26,30 @@ function unwrap(node) {
   return data;
 }
 
-function headers(env, extra = {}) {
-  return { accept: "application/json", "X-API-Key": env.WARERA_API_KEY, ...extra };
+// Ako API odbije ključ (401/403, npr. ključ je poništen jer je napravljen novi), sinkronizacija
+// nastavlja bez ključa (API to dopušta, uz niži limit) i 10 minuta ga ne šalje; status to prijavljuje.
+let keyRejectedAt = 0;
+const KEY_RETRY_MS = 10 * 60 * 1000;
+const useKey = (env) => Boolean(env.WARERA_API_KEY) && Date.now() - keyRejectedAt > KEY_RETRY_MS;
+const apiKeyRejected = () => keyRejectedAt > 0 && Date.now() - keyRejectedAt <= KEY_RETRY_MS;
+
+function headers(env, extra = {}, withKey = useKey(env)) {
+  return { accept: "application/json", ...(withKey ? { "X-API-Key": env.WARERA_API_KEY } : {}), ...extra };
+}
+
+async function apiFetch(env, url, init = {}, extra = {}) {
+  const withKey = useKey(env);
+  let res = await fetch(url, { ...init, headers: headers(env, extra, withKey) });
+  if (withKey && (res.status === 401 || res.status === 403)) {
+    keyRejectedAt = Date.now();
+    res = await fetch(url, { ...init, headers: headers(env, extra, false) });
+  }
+  return res;
 }
 
 async function trpc(env, proc, input) {
   const url = `${API}/${proc}?input=${encodeURIComponent(JSON.stringify(input ?? {}))}`;
-  const res = await fetch(url, { headers: headers(env) });
+  const res = await apiFetch(env, url);
   if (!res.ok) throw new Error(`${proc} -> HTTP ${res.status}`);
   const body = await res.json();
   return unwrap(Array.isArray(body) ? body[0] : body);
@@ -43,10 +60,8 @@ async function trpcBatch(env, proc, inputs) {
   const names = inputs.map(() => proc).join(",");
   const payload = {};
   inputs.forEach((x, i) => (payload[i] = x));
-  const res = await fetch(`${API}/${names}?batch=1`, {
-    method: "POST",
-    headers: headers(env, { "content-type": "application/json" }),
-    body: JSON.stringify(payload),
+  const res = await apiFetch(env, `${API}/${names}?batch=1`, { method: "POST", body: JSON.stringify(payload) }, {
+    "content-type": "application/json",
   });
   if (!res.ok) throw new Error(`${proc} batch -> HTTP ${res.status}`);
   const arr = await res.json();
@@ -633,8 +648,15 @@ async function runSyncInner(env) {
   meta = await getMeta(env);
   await step("tx", () => syncTransactions(env, meta, budget));
   await step("players", () => enrichPlayers(env, meta));
-  // jedan batch: zadnji prolaz, brisanje stare greške err_run i otključavanje
-  await setMetaMany(env, { last_run: new Date().toISOString(), err_run: null, lock_until: null });
+  // jedan batch: zadnji prolaz, brisanje stare greške err_run, stanje API ključa i otključavanje
+  await setMetaMany(env, {
+    last_run: new Date().toISOString(),
+    err_run: null,
+    err_apikey: apiKeyRejected()
+      ? "WarEra API odbija WARERA_API_KEY (401) - sinkronizacija radi bez ključa; upiši važeći ključ u Worker → Settings → Variables and Secrets"
+      : null,
+    lock_until: null,
+  });
 }
 
 /* ------------------------------------------------------------------ */

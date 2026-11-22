@@ -79,10 +79,13 @@ export function makeWorld({ txCount = 6000, days = 40, seed = 1 } = {}) {
 
 // lažni WarEra tRPC API nad svijetom; vraća brojač poziva.
 // globalDays: koliko dana unatrag seže globalni popis (pravi API: ~3), filter userId vraća cijelu povijest igrača.
-export function installFakeApi(world, { globalDays = Infinity } = {}) {
-  const calls = { n: 0 };
+export function installFakeApi(world, { globalDays = Infinity, badKey = null } = {}) {
+  const calls = { n: 0, withKey: 0 };
   globalThis.fetch = async (url, opts = {}) => {
     calls.n++;
+    const key = opts.headers?.["X-API-Key"];
+    if (key) calls.withKey++;
+    if (badKey && key === badKey) return { ok: false, status: 401, json: async () => ({ error: "unauthorized" }) };
     const u = new URL(url);
     const proc = u.pathname.split("/").pop();
     const ok = (x) => ({ ok: true, status: 200, json: async () => x });

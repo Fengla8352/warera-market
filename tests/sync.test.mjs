@@ -159,3 +159,13 @@ test("povijest po igraču poštuje dnevni proračun", async () => {
   const w = Number(db.prepare("SELECT value FROM meta WHERE key = 'w_rows'").get().value);
   assert.ok(w < 3000 + 2000, `proračun prekoračen previše: ${w}`);
 });
+
+test("odbijen API ključ: sinkronizacija nastavlja bez ključa i to prijavljuje", async () => {
+  const { db, worker, env } = await synced({ api: { badKey: "test" } }, 30);
+  const meta = Object.fromEntries(db.prepare("SELECT key, value FROM meta").all().map((r) => [r.key, r.value]));
+  assert.equal(meta.err_tx, undefined, "sinkronizacija transakcija ne smije pasti");
+  assert.ok(meta.err_apikey, "status mora prijaviti odbijen ključ");
+  assert.ok(db.prepare("SELECT COUNT(*) n FROM transactions").get().n > 0);
+  const st = await get(worker, env, "/api/status");
+  assert.ok(st.body.errors.err_apikey);
+});
