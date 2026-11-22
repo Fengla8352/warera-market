@@ -170,6 +170,7 @@
   .ov li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: baseline; column-gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
   .ov li:last-child { border-bottom: 0; }
   .ov li .rk { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ov li .who { min-width: 0; display: flex; align-items: center; }
   .ov li button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ov li button:hover { color: var(--rank); }
   .ov li small { grid-column: 2; color: var(--muted); font-size: 12px; }
@@ -200,6 +201,13 @@
   tbody tr:hover { background: var(--hover); }
   td.name button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
   td.name .sub { display: none; }
+  /* link na profil igrača u igri */
+  .prof { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 4px; vertical-align: -5px; border-radius: 6px; color: var(--muted); }
+  .prof svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .prof:hover, .prof:focus-visible { color: var(--rank); background: var(--hover); }
+  .dprof { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 13px; color: var(--rank); text-decoration: none; }
+  .dprof:hover { text-decoration: underline; }
+  .dprof svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   td.main { color: var(--rank); font-weight: 700; }
   td.empty { padding: 36px; text-align: center; color: var(--muted); white-space: normal; }
   .card[aria-busy="true"] tbody { opacity: .55; }
@@ -353,7 +361,8 @@
 
 <dialog id="dlg" aria-labelledby="d-name">
   <div class="dhead">
-    <div><h2 id="d-name"></h2><div class="dsub" id="d-meta"></div></div>
+    <div><h2 id="d-name"></h2><div class="dsub" id="d-meta"></div>
+      <a class="dprof" id="d-prof" href="#" target="_blank" rel="noopener">Profil u igri <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a></div>
     <button type="button" id="d-close">Zatvori</button>
   </div>
   <div class="chips" id="d-chips"></div>
@@ -608,6 +617,11 @@
     syncItems();
   }
 
+  /* ---------- link na profil u igri ---------- */
+  const profileUrl = (id) => `https://app.warera.io/user/${encodeURIComponent(id)}`;
+  const profLink = (id, name) => `<a class="prof" href="${esc(profileUrl(id))}" target="_blank" rel="noopener" title="Profil u igri" aria-label="Profil igrača ${esc(name)} u igri">` +
+    `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>`;
+
   /* ---------- tablica ---------- */
   const fmtM = (n) => Number(n || 0).toLocaleString("hr-HR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   // na mobitelu su vidljiva samo dva stupca (količina, novac ispod); dodir mijenja sortiranje količina <-> novac
@@ -642,7 +656,7 @@
       tb.innerHTML = data.rows.map((r) => `
         <tr data-id="${esc(r.user_id)}">
           <td class="rank">${r.rank}</td>
-          <td class="name"><button type="button">${esc(r.name || r.user_id)}</button><span class="sub">${esc(r.country_name || "")}</span></td>
+          <td class="name"><button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}<span class="sub">${esc(r.country_name || "")}</span></td>
           <td class="ctry">${esc(r.country_name || "–")}</td>
           <td class="${cls("bought")}">${fmt(r.bought)}<span class="sub">${fmtM(r.spent)}</span></td>
           <td class="${cls("spent")}">${fmtM(r.spent)}</td>
@@ -735,11 +749,13 @@
   }
 
   $("rows").addEventListener("click", (e) => {
+    if (e.target.closest("a")) return; // link na profil otvara igru, ne prozor
     const tr = e.target.closest("tr[data-id]");
     if (tr) openPlayer(tr.dataset.id, tr.querySelector(".name button").textContent);
   });
   async function openPlayer(id, name) {
     $("d-name").textContent = name;
+    $("d-prof").href = profileUrl(id);
     $("d-meta").textContent = "Učitavanje…";
     $("d-chips").innerHTML = ""; $("d-rows").innerHTML = ""; $("d-chart").textContent = "";
     $("dlg").showModal();
@@ -799,7 +815,7 @@
       : `<tr><td colspan="4" class="empty">Nema prometa.</td></tr>`;
     $("ov-today-h").textContent = `Danas najviše kupili · ${isoToHr(d.today)}`;
     $("ov-today").innerHTML = d.today_top.length ? d.today_top.map((r, i) =>
-      `<li data-id="${esc(r.user_id)}"><span class="rk">${i + 1}</span><button type="button">${esc(r.name || r.user_id)}</button>` +
+      `<li data-id="${esc(r.user_id)}"><span class="rk">${i + 1}</span><span class="who"><button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span>` +
       `<small>${esc(r.country_name || "")}</small><span class="num"><b>${fmt(r.bought)}</b> · ${fmtM(r.spent)}</span></li>`).join("")
       : `<li class="empty">Danas još nema kupnji ovog itema.</li>`;
   }
@@ -863,6 +879,7 @@
     box.append(head, wrap, xl, tip);
   }
   $("ov-today").addEventListener("click", (e) => {
+    if (e.target.closest("a")) return;
     const li = e.target.closest("li[data-id]");
     if (li) openPlayer(li.dataset.id, li.querySelector("button").textContent);
   });
