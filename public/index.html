@@ -132,6 +132,51 @@
   .items-meta { display: flex; align-items: center; gap: 10px; margin: 8px 2px 0; color: var(--muted); font-size: 13px; min-height: 24px; }
   .items-meta b { color: var(--text-2); font-weight: 600; }
 
+  /* upozorenja */
+  .stale, .note { margin-top: 12px; border-radius: 10px; padding: 10px 14px; font-size: 14px; display: flex; gap: 10px; align-items: flex-start; }
+  .stale[hidden], .note[hidden] { display: none; }
+  .stale { background: color-mix(in srgb, var(--sell) 14%, var(--panel)); border: 1px solid color-mix(in srgb, var(--sell) 45%, var(--line)); color: var(--text); }
+  .stale::before { content: "⚠"; color: var(--sell); font-weight: 700; }
+  .note { background: var(--panel); border: 1px solid var(--line); color: var(--text-2); font-size: 13px; box-shadow: var(--elev); }
+  .note::before { content: "ℹ"; color: var(--rank); font-weight: 700; }
+  .cal-grid button.partial:not(.sel):not(:disabled) { color: var(--muted); text-decoration: underline dotted; text-underline-offset: 3px; }
+
+  /* pregled iznad tablice */
+  .ov { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; align-items: start; }
+  .ov[aria-busy=true] { opacity: .6; }
+  .ov-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: var(--elev); min-width: 0; }
+  .ov-side { display: grid; gap: 14px; align-content: start; min-width: 0; }
+  .ov h3 { margin: 0 0 10px; font-size: 14px; color: var(--text); font-weight: 700; }
+  .kpi { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .kpi small { display: block; color: var(--muted); font-size: 12px; }
+  .kpi b { color: var(--text); font-size: 18px; font-variant-numeric: tabular-nums; }
+  .ov-chart { position: relative; }
+  .ov-axis { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .pwrap { position: relative; }
+  .ov-chart svg { display: block; width: 100%; height: 150px; overflow: visible; }
+  .ov-chart .grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .ov-chart .pline { fill: none; stroke: var(--rank); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .ov-chart .cross { stroke: var(--muted); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .pdot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--rank); box-shadow: 0 0 0 2px var(--panel); pointer-events: none; }
+  .ov-chart .tip { top: 22px; }
+  .ov table { min-width: 0; }
+  .ov th, .ov td { padding: 6px 4px; font-size: 13px; }
+  .ov th { background: none; }
+  .ov tr:hover { background: none; }
+  .ov tbody tr { cursor: default; }
+  .ov ol { list-style: none; margin: 0; padding: 0; }
+  .ov li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: baseline; column-gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .ov li:last-child { border-bottom: 0; }
+  .ov li .rk { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ov li button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov li button:hover { color: var(--rank); }
+  .ov li small { grid-column: 2; color: var(--muted); font-size: 12px; }
+  .ov li .num { grid-column: 3; grid-row: 1; font-variant-numeric: tabular-nums; color: var(--text-2); }
+  .ov li .num b { color: var(--rank); }
+  .ov li.empty { display: block; color: var(--muted); font-size: 13px; }
+  @media (max-width: 760px) { .ov { grid-template-columns: 1fr; } }
+  @media (max-width: 560px) { .kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ov th { letter-spacing: 0; font-size: 11px; } .ov-card { padding: 12px; } }
+
   /* tablica */
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 14px; box-shadow: var(--elev); }
   .scroll { overflow-x: auto; }
@@ -262,6 +307,26 @@
 
   <div class="items-wrap" id="items" role="group" aria-label="Itemi koji se prate"></div>
   <div class="items-meta"><span id="items-hint"></span></div>
+  <div class="stale" id="stale" role="status" hidden></div>
+  <div class="note" id="note" hidden></div>
+
+  <section class="ov" id="ov" aria-busy="false">
+    <div class="ov-card">
+      <h3 id="ov-title">Prosječna cijena</h3>
+      <div class="kpi" id="ov-kpi"></div>
+      <div class="ov-chart" id="ov-chart"></div>
+    </div>
+    <div class="ov-side">
+      <div class="ov-card">
+        <h3>Po državama</h3>
+        <table><thead><tr><th>Država</th><th class="num">Kupljeno</th><th class="num">Potrošeno</th><th class="num" title="Prosječna cijena po komadu">Cijena</th></tr></thead><tbody id="ov-countries"></tbody></table>
+      </div>
+      <div class="ov-card">
+        <h3 id="ov-today-h">Danas najviše kupili</h3>
+        <ol id="ov-today"></ol>
+      </div>
+    </div>
+  </section>
 
   <div class="card" id="card" aria-busy="false"><div class="scroll">
     <table>
@@ -412,13 +477,15 @@
       const off = (cal.min && iso < cal.min) || iso > max;
       const sel = iso === f || iso === t;
       const inR = f && t && iso > f && iso < t;
-      html += `<button type="button" data-d="${iso}" class="${sel ? "sel" : ""} ${inR ? "in" : ""} ${iso === td ? "today" : ""}"` +
-        ` aria-label="${d}. ${MONTHS[m - 1]} ${y}" aria-pressed="${sel}" ${off ? "disabled" : ""}>${d}</button>`;
+      const partial = state.completeFrom && iso <= state.completeFrom.slice(0, 10);
+      html += `<button type="button" data-d="${iso}" class="${sel ? "sel" : ""} ${inR ? "in" : ""} ${iso === td ? "today" : ""} ${partial ? "partial" : ""}"` +
+        ` aria-label="${d}. ${MONTHS[m - 1]} ${y}${partial ? ", podaci nepotpuni" : ""}" ${partial ? 'title="Podaci za ovaj dan nisu potpuni"' : ""} aria-pressed="${sel}" ${off ? "disabled" : ""}>${d}</button>`;
     }
     $("cal-grid").innerHTML = html;
     $("cal-prev").disabled = Boolean(cal.min && first <= cal.min);
     $("cal-next").disabled = addDays(`${cal.month}-${pad(days)}`, 1) > max;
-    $("cal-hint").textContent = cal.field === "to" ? "Odaberi završni dan" : "Odaberi početni dan";
+    $("cal-hint").textContent = (cal.field === "to" ? "Odaberi završni dan" : "Odaberi početni dan") +
+      (state.completeFrom ? ` · potpuno od ${isoToHr(state.completeFrom.slice(0, 10))}` : "");
     const ap = activePreset();
     for (const b of $("presets").children) b.setAttribute("aria-pressed", String(b.dataset.p === ap));
   }
@@ -586,7 +653,7 @@
     $("page").textContent = data.rows.length ? `Prikaz ${state.offset + 1}–${state.offset + data.rows.length}` : "";
   }
 
-  const reload = () => { state.offset = 0; load(); };
+  const reload = () => { state.offset = 0; load(); loadOverview(); syncNote(); };
 
   let timer;
   $("q").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(reload, 300); });
@@ -665,16 +732,18 @@
     box.append(svg, xl, tip);
   }
 
-  $("rows").addEventListener("click", async (e) => {
+  $("rows").addEventListener("click", (e) => {
     const tr = e.target.closest("tr[data-id]");
-    if (!tr) return;
-    $("d-name").textContent = tr.querySelector(".name button").textContent;
+    if (tr) openPlayer(tr.dataset.id, tr.querySelector(".name button").textContent);
+  });
+  async function openPlayer(id, name) {
+    $("d-name").textContent = name;
     $("d-meta").textContent = "Učitavanje…";
     $("d-chips").innerHTML = ""; $("d-rows").innerHTML = ""; $("d-chart").textContent = "";
     $("dlg").showModal();
     try {
       const p = periodParams(new URLSearchParams());
-      const { player, per_item, per_day, recent, truncated } = await api("/api/player/" + encodeURIComponent(tr.dataset.id) + "?" + p);
+      const { player, per_item, per_day, recent, truncated } = await api("/api/player/" + encodeURIComponent(id) + "?" + p);
       const fi = p.get("from"), ti = p.get("to");
       const period = fi || ti ? ` · ${isoToHr(fi) || "početak"} – ${isoToHr(ti) || "danas"}` : " · cijelo razdoblje";
       $("d-meta").textContent = (player.country_name || "ID " + player.user_id) + period;
@@ -694,15 +763,131 @@
           `<td class="num">${fmt(t.quantity)}</td><td class="num money">${t.money == null ? "–" : fmtM(t.money)}</td><td>${esc(t.other_name || t.other_id)}</td></tr>`;
       }).join("") + (truncated ? `<tr><td colspan="7" class="empty">Prikazano zadnjih ${recent.length} transakcija.</td></tr>` : "") : `<tr><td colspan="7" class="empty">Nema transakcija u odabranom razdoblju.</td></tr>`;
     } catch { $("d-meta").textContent = "Greška pri učitavanju igrača."; }
-  });
+  }
   $("d-close").onclick = () => $("dlg").close();
   $("dlg").addEventListener("click", (e) => { if (e.target === $("dlg")) $("dlg").close(); });
+
+  /* ---------- pregled iznad tablice: cijena, sažetak, top danas ---------- */
+  let ovKey = "";
+  async function loadOverview() {
+    const p = periodParams(new URLSearchParams());
+    if ($("country").value) p.set("country", $("country").value);
+    const key = p.toString();
+    if (key === ovKey) return;
+    ovKey = key;
+    $("ov").setAttribute("aria-busy", "true");
+    let d;
+    try { d = await api("/api/overview?" + p); } catch { $("ov").setAttribute("aria-busy", "false"); return; }
+    if (key !== ovKey) return;
+    $("ov").setAttribute("aria-busy", "false");
+    const m = state.meta.get(state.item);
+    const name = m ? m.name : "item";
+    const tot = d.by_country.reduce((a, r) => ({ bought: a.bought + r.bought, spent: a.spent + r.spent, sold: a.sold + r.sold, buyers: a.buyers + r.buyers }), { bought: 0, spent: 0, sold: 0, buyers: 0 });
+    const q = d.by_day.reduce((a, r) => a + r.qty, 0), mny = d.by_day.reduce((a, r) => a + r.money, 0);
+    $("ov-title").textContent = `Prosječna cijena · ${name}`;
+    $("ov-kpi").innerHTML =
+      `<div><small>Kupljeno</small><b>${fmt(tot.bought)}</b></div>` +
+      `<div><small>Potrošeno</small><b>${fmtM(tot.spent)}</b></div>` +
+      `<div><small>Prosječna cijena</small><b>${q ? fmtM(mny / q) : "–"}</b></div>` +
+      `<div><small>Kupaca</small><b>${fmt(tot.buyers)}</b></div>`;
+    renderPrice(d.by_day);
+    $("ov-countries").innerHTML = d.by_country.length ? d.by_country.map((r) =>
+      `<tr><td>${esc(r.country_name || "–")}</td><td class="num">${fmt(r.bought)}</td><td class="num">${fmtM(r.spent)}</td>` +
+      `<td class="num">${r.bought ? fmtM(r.spent / r.bought) : "–"}</td></tr>`).join("")
+      : `<tr><td colspan="4" class="empty">Nema prometa.</td></tr>`;
+    $("ov-today-h").textContent = `Danas najviše kupili · ${isoToHr(d.today)}`;
+    $("ov-today").innerHTML = d.today_top.length ? d.today_top.map((r, i) =>
+      `<li data-id="${esc(r.user_id)}"><span class="rk">${i + 1}</span><button type="button">${esc(r.name || r.user_id)}</button>` +
+      `<small>${esc(r.country_name || "")}</small><span class="num"><b>${fmt(r.bought)}</b> · ${fmtM(r.spent)}</span></li>`).join("")
+      : `<li class="empty">Danas još nema kupnji ovog itema.</li>`;
+  }
+
+  // linijski graf prosječne cijene po danu (jedna serija, bez legende; naslov je imenuje)
+  function renderPrice(days) {
+    const box = $("ov-chart");
+    box.textContent = "";
+    const pts = days.filter((r) => r.qty > 0).map((r) => ({ day: r.day, qty: r.qty, price: r.money / r.qty }));
+    if (!pts.length) { box.innerHTML = `<div class="dsub" style="padding:30px 0;text-align:center">Nema transakcija u odabranom razdoblju.</div>`; return; }
+    let a = dateIso("from") || pts[0].day, b = dateIso("to") || pts[pts.length - 1].day;
+    if (a > b) [a, b] = [b, a];
+    const all = [];
+    const byDay = new Map(pts.map((p) => [p.day, p]));
+    for (let x = a; x <= b && all.length < 120; x = addDays(x, 1)) all.push(byDay.get(x) || { day: x, qty: 0, price: null });
+    const prices = pts.map((p) => p.price);
+    let lo = Math.min(...prices), hi = Math.max(...prices);
+    const padv = (hi - lo) * 0.15 || hi * 0.05 || 1;
+    lo = Math.max(0, lo - padv); hi = hi + padv;
+    const W = 600, H = 150, n = all.length, slot = W / n;
+    const X = (i) => slot * i + slot / 2, Y = (v) => H - 6 - ((v - lo) / (hi - lo)) * (H - 16);
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", role: "img", "aria-label": "Prosječna cijena po danu" });
+    for (const t of [0.25, 0.5, 0.75]) svg.append(svgEl("line", { x1: 0, x2: W, y1: 6 + (H - 16) * t, y2: 6 + (H - 16) * t, class: "grid" }));
+    let dPath = "", pen = false;
+    all.forEach((r, i) => { if (r.price == null) { pen = false; return; } dPath += `${pen ? "L" : "M"}${X(i)},${Y(r.price)} `; pen = true; });
+    svg.append(svgEl("path", { d: dPath, class: "pline" }));
+    const cross = svgEl("line", { y1: 0, y2: H, class: "cross", visibility: "hidden" });
+    svg.append(cross);
+    const dot = document.createElement("span"); dot.className = "pdot"; dot.hidden = true;
+    const tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true;
+    const show = (i) => {
+      const r = all[i];
+      cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("visibility", "visible");
+      tip.textContent = "";
+      const t1 = document.createElement("div"); t1.textContent = isoToHr(r.day);
+      const t2 = document.createElement("div"); const v = document.createElement("b");
+      v.textContent = r.price == null ? "nema transakcija" : fmtM(r.price); t2.append(v, r.price == null ? "" : " po komadu");
+      tip.append(t1, t2);
+      if (r.price != null) { const t3 = document.createElement("div"); t3.textContent = `${fmt(r.qty)} kom u transakcijama`; tip.append(t3); }
+      tip.hidden = false;
+      const bw = box.clientWidth, px = (X(i) / W) * bw;
+      tip.style.left = Math.max(0, Math.min(px - tip.offsetWidth / 2, bw - tip.offsetWidth)) + "px";
+      if (r.price != null) { dot.hidden = false; dot.style.left = px + "px"; dot.style.top = (Y(r.price) / H) * 150 + "px"; } else dot.hidden = true;
+    };
+    const hide = () => { cross.setAttribute("visibility", "hidden"); tip.hidden = true; dot.hidden = true; };
+    const hit = svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "transparent", tabindex: "0", "aria-label": "Pomakni za vrijednosti po danu" });
+    const idxAt = (clientX) => { const r = svg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.floor(((clientX - r.left) / r.width) * n))); };
+    let cur = n - 1;
+    hit.addEventListener("pointermove", (e) => { cur = idxAt(e.clientX); show(cur); });
+    hit.addEventListener("pointerleave", hide);
+    hit.addEventListener("focus", () => show(cur));
+    hit.addEventListener("blur", hide);
+    hit.addEventListener("keydown", (e) => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); cur = Math.max(0, Math.min(n - 1, cur + (e.key === "ArrowLeft" ? -1 : 1))); show(cur); } });
+    svg.append(hit);
+    const head = document.createElement("div"); head.className = "ov-axis";
+    head.innerHTML = `<span>${fmtM(Math.min(...prices))} – ${fmtM(Math.max(...prices))} po komadu</span>`;
+    const xl = document.createElement("div"); xl.className = "xlab";
+    for (const i of [...new Set([0, Math.floor((n - 1) / 2), n - 1])]) { const t = document.createElement("span"); t.textContent = isoToHr(all[i].day).slice(0, 5); xl.append(t); }
+    const wrap = document.createElement("div"); wrap.className = "pwrap";
+    wrap.append(svg, dot);
+    box.append(head, wrap, xl, tip);
+  }
+  $("ov-today").addEventListener("click", (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (li) openPlayer(li.dataset.id, li.querySelector("button").textContent);
+  });
+
+  /* ---------- status: kašnjenje i potpunost podataka ---------- */
+  const STALE_MS = 5 * 60 * 1000;
+  function syncNote() {
+    const cf = state.completeFrom;
+    const from = dateIso("from");
+    const show = cf && (!from || from <= cf.slice(0, 10));
+    $("note").hidden = !show;
+    if (show) $("note").textContent = `Podaci su potpuni tek od ${fmtDT(cf)}. Brojke za ranije dane su nepotpune` +
+      (state.backfillDone ? "." : " jer se povijest još učitava (cilj: zadnjih 30 dana).");
+  }
 
   /* ---------- status ---------- */
   async function loadStatus() {
     try {
       const s = await api("/api/status");
       const errs = Object.values(s.errors || {});
+      state.completeFrom = s.complete_from || null; state.backfillDone = Boolean(s.backfill_done);
+      syncNote(); if (!pop.hidden) renderCal();
+      const age = s.last_run ? Date.now() - Date.parse(s.last_run) : Infinity;
+      $("stale").hidden = age < STALE_MS;
+      if (age >= STALE_MS) $("stale").textContent = s.last_run
+        ? `Podaci kasne: zadnje osvježenje bilo je ${fmtDT(s.last_run)} (prije ${Math.round(age / 60000)} min). Najnovije transakcije možda još nisu prikazane.`
+        : "Podaci se trenutno ne osvježavaju.";
       $("status").innerHTML =
         `Pohranjeno transakcija: <b>${fmt(s.transactions)}</b> · igrača: <b>${fmt(s.players)}</b> · ` +
         (s.backfill_done ? "povijest potpuno učitana" : "učitavanje povijesti je u tijeku" + (s.history_reached ? " (do " + esc(fmtDT(s.history_reached).slice(0, 10)) + ")" : "") + (s.history_paused ? ", danas pauzirano zbog dnevnog limita baze, nastavlja se u ponoć UTC" : "…")) +
@@ -718,7 +903,7 @@
   syncSortHeaders();
   setDates(validIso(urlIn.get("from")), validIso(urlIn.get("to")));
   if (urlIn.get("q")) $("q").value = urlIn.get("q");
-  loadFilters().then(() => load()).catch(() => load());
+  loadFilters().then(() => { load(); loadOverview(); }).catch(() => load());
   loadStatus();
   setInterval(loadStatus, 60000);
 })();

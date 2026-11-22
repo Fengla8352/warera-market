@@ -37,7 +37,7 @@ Secret `WARERA_API_KEY` postavlja se u Workeru (Settings → Variables and Secre
 
 1. **Migracija baze** (jednom, u D1 Consoleu): izvrši `migration.sql` (Dio 1, pa Dio 2 kao zasebnu naredbu). Briše spremljene transakcije i statistiku, koji se učitaju ponovo.
 2. Pushaj datoteke na GitHub (`src/`, `public/` uključujući `public/icons/`, `schema.sql`, `migration.sql`, `wrangler.toml`, `package.json`). Cloudflare sam objavi novu verziju; `wrangler.toml` ponovno spaja D1 bazu `DB` i cron.
-3. Kasnije migracije (jednom, u D1 Consoleu, prije objave koda koji ih treba): `migration-2.sql` (indeksi za prozor igrača), `migration-3.sql` (indeks `players(fetched_at)`), `migration-4.sql` (tablice `player_country` i `tracked`, novi okidač), `migration-5.sql` (potrošeni i zarađeni novac u `player_item_daily`).
+3. Kasnije migracije (jednom, u D1 Consoleu, prije objave koda koji ih treba): `migration-2.sql` (indeksi za prozor igrača), `migration-3.sql` (indeks `players(fetched_at)`), `migration-4.sql` (tablice `player_country` i `tracked`, novi okidač), `migration-5.sql` (potrošeni i zarađeni novac u `player_item_daily`), `migration-6.sql` (indeks `(item_code, day)` za pregled iznad tablice).
 4. Provjeri `/api/status`: `has_api_key: true`, `errors` prazan, `tracked.missing` prazan i `transactions` raste.
 
 ## Ikonice i boje

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS player_item_daily (
   PRIMARY KEY (user_id, day, item_code)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_daily_day ON player_item_daily(day);
+CREATE INDEX IF NOT EXISTS idx_daily_item_day ON player_item_daily(item_code, day);
 
 -- Igrači iz praćenih država (ime + država), dohvaćaju se iz user.getUserLite
 -- fetched_at = 0 znači "vidjeli smo igrača u transakciji, još nije dohvaćen"

@@ -638,6 +638,70 @@ async function apiRanking(env, url) {
   return json({ rows, hasMore, offset, limit }, 200, { "cache-control": "public, max-age=30" });
 }
 
+// pregled iznad tablice: zbroj po državama, prosječna cijena po danima, najveći kupci danas (UTC)
+async function apiOverview(env, url, ctx, request) {
+  const cache = typeof caches !== "undefined" ? caches.default : null;
+  const cacheKey = new Request(request.url);
+  if (cache) {
+    const hit = await cache.match(cacheKey);
+    if (hit) return hit;
+  }
+  const f = parseFilters(url);
+  const country = url.searchParams.get("country");
+  const tracked = await trackedCountries(env);
+  const scope = (where, args) => {
+    if (tracked && tracked.ids.length) {
+      where.push(`p.country_id IN (${tracked.ids.map(() => "?").join(",")})`);
+      args.push(...tracked.ids);
+    }
+    if (country) {
+      where.push("p.country_id = ?");
+      args.push(country);
+    }
+  };
+  const FROM =
+    "FROM player_item_daily d JOIN players p ON p.user_id = d.user_id LEFT JOIN countries c ON c.id = p.country_id ";
+
+  const w1 = [], a1 = [];
+  periodWhere(f, w1, a1);
+  scope(w1, a1);
+  const where1 = w1.length ? "WHERE " + w1.join(" AND ") + " " : "";
+
+  const today = new Date().toISOString().slice(0, 10);
+  const w2 = ["d.day = ?"], a2 = [today];
+  if (f.items.length) {
+    w2.push(`d.item_code IN (${f.items.map(() => "?").join(",")})`);
+    a2.push(...f.items);
+  }
+  scope(w2, a2);
+
+  const [byCountry, byDay, top] = await env.DB.batch([
+    env.DB.prepare(
+      "SELECT p.country_id, c.name AS country_name, SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold, " +
+        "ROUND(SUM(d.bought_money), 3) AS spent, ROUND(SUM(d.sold_money), 3) AS earned, " +
+        "COUNT(DISTINCT CASE WHEN d.bought_qty > 0 THEN d.user_id END) AS buyers, " +
+        "COUNT(DISTINCT CASE WHEN d.sold_qty > 0 THEN d.user_id END) AS sellers " +
+        FROM + where1 + "GROUP BY p.country_id ORDER BY bought DESC",
+    ).bind(...a1),
+    // prosječna cijena = stvarno plaćeno / količina, iz kupnji i prodaja igrača praćenih država
+    env.DB.prepare(
+      "SELECT d.day, SUM(d.bought_qty + d.sold_qty) AS qty, ROUND(SUM(d.bought_money + d.sold_money), 3) AS money " +
+        FROM + where1 + "GROUP BY d.day ORDER BY d.day",
+    ).bind(...a1),
+    env.DB.prepare(
+      "SELECT d.user_id, p.name, c.name AS country_name, SUM(d.bought_qty) AS bought, ROUND(SUM(d.bought_money), 3) AS spent " +
+        FROM + "WHERE " + w2.join(" AND ") + " AND d.bought_qty > 0 GROUP BY d.user_id ORDER BY bought DESC, spent DESC LIMIT 5",
+    ).bind(...a2),
+  ]);
+  const res = json(
+    { by_country: byCountry.results, by_day: byDay.results, today, today_top: top.results },
+    200,
+    { "cache-control": "public, max-age=120" },
+  );
+  if (cache) ctx.waitUntil(cache.put(cacheKey, res.clone()));
+  return res;
+}
+
 async function apiFilters(env) {
   const tracked = await trackedCountries(env);
   const ids = tracked?.ids?.length ? tracked.ids : null;
@@ -795,6 +859,8 @@ async function apiStatusFresh(env) {
       tracked: trackedInfo ? trackedInfo : "sve države",
       backfill_done: meta.g_back_done === "1",
       history_reached: meta.g_back_oldest || null,
+      // podaci su potpuni od ovog trenutka (sve starije je djelomično, od ranijih verzija)
+      complete_from: meta.g_back_oldest || null,
       writes_today: meta.w_day === new Date().toISOString().slice(0, 10) ? Number(meta.w_rows) || 0 : 0,
       history_paused:
         meta.g_back_done !== "1" &&
@@ -818,6 +884,7 @@ export default {
     try {
       if (path === "/api/ranking") return await apiRanking(env, url);
       if (path === "/api/filters") return await apiFilters(env);
+      if (path === "/api/overview") return await apiOverview(env, url, ctx, request);
       if (path === "/api/status") return await apiStatus(env, ctx, request);
       if (path.startsWith("/api/player/")) {
         return await apiPlayer(env, decodeURIComponent(path.slice("/api/player/".length)), url, ctx, request);
