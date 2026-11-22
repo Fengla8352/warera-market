@@ -653,7 +653,7 @@ async function runSyncInner(env) {
     last_run: new Date().toISOString(),
     err_run: null,
     err_apikey: apiKeyRejected()
-      ? "WarEra API odbija WARERA_API_KEY (401) - sinkronizacija radi bez ključa; upiši važeći ključ u Worker → Settings → Variables and Secrets"
+      ? "WarEra API odbija WARERA_API_KEY (401). Upiši važeći ključ u Cloudflare: Worker → Settings → Variables and Secrets"
       : null,
     lock_until: null,
   });
