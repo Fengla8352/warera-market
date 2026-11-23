@@ -721,7 +721,7 @@ async function apiRanking(env, url) {
   const country = p.get("country");
   const alliance = p.get("alliance");
   const q = (p.get("q") || "").trim();
-  const SORTS = ["bought", "sold", "spent", "earned"];
+  const SORTS = ["bought", "sold", "spent", "earned", "diff"];
   const sortCol = SORTS.includes(p.get("sort")) ? p.get("sort") : "bought";
   const limit = Math.min(Math.max(Number(p.get("limit")) || 50, 1), 100);
   const offset = Math.max(Number(p.get("offset")) || 0, 0);
@@ -749,7 +749,7 @@ async function apiRanking(env, url) {
 
   const sql =
     "SELECT d.user_id, p.name, p.avatar, p.country_id, c.name AS country_name, " +
-    "SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold, " +
+    "SUM(d.bought_qty) AS bought, SUM(d.sold_qty) AS sold, SUM(d.bought_qty) - SUM(d.sold_qty) AS diff, " +
     "ROUND(SUM(d.bought_money), 3) AS spent, ROUND(SUM(d.sold_money), 3) AS earned " +
     "FROM player_item_daily d " +
     "LEFT JOIN players p ON p.user_id = d.user_id " +

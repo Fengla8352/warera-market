@@ -230,6 +230,8 @@
   tbody tr:hover { background: var(--hover); }
   td.name button:not(.cmp) { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
   td.name .sub { display: none; }
+  .m-diff { display: none; }
+  @media (max-width: 560px) { .m-diff { display: inline; } }
   /* profilna slika (ako je nema ili se ne učita, vidi se prvo slovo imena) */
   .av { --a: 24px; position: relative; display: inline-grid; place-items: center; flex: none; width: var(--a); height: var(--a); border-radius: 50%; overflow: hidden;
     background: var(--hl); color: var(--rank); font-size: calc(var(--a) * .46); font-weight: 700; vertical-align: middle; margin-right: 8px; text-transform: uppercase; }
@@ -352,7 +354,7 @@
     th:first-child, td:first-child { padding-left: 12px; }
     th:last-child, td:last-child { padding-right: 12px; }
     td.name { white-space: normal; overflow-wrap: anywhere; }
-    th.ctry, td.ctry, th.mny, td.mny { display: none; }
+    th.ctry, td.ctry, th.mny, td.mny, th.mdiff, td.mdiff { display: none; }
     td.num .sub { display: block; }
     td.name .sub { display: block; }
     th.rank, td.rank { width: 30px; }
@@ -439,8 +441,9 @@
         <th class="num mny" aria-sort="none"><button type="button" data-sort="spent">Potrošeno</button></th>
         <th class="num" aria-sort="none"><button type="button" data-sort="sold" data-alt="earned">Prodano</button></th>
         <th class="num mny" aria-sort="none"><button type="button" data-sort="earned">Zarađeno</button></th>
+        <th class="num mdiff" aria-sort="none" title="Kupljeno − prodano"><button type="button" data-sort="diff">Razlika</button></th>
       </tr></thead>
-      <tbody id="rows"><tr><td colspan="8" class="empty">Učitavanje…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="9" class="empty">Učitavanje…</td></tr></tbody>
     </table>
   </div></div>
 
@@ -710,7 +713,7 @@
   }
 
   // filteri u adresi stranice: ?item=…&country=…&from=…&to=…&sort=…&q=… (link otvara isti prikaz)
-  const SORTS = ["bought", "spent", "sold", "earned"];
+  const SORTS = ["bought", "spent", "sold", "earned", "diff"];
   const urlIn = new URLSearchParams(location.search);
   function writeUrl() {
     const u = new URLSearchParams();
@@ -771,25 +774,26 @@
     $("card").setAttribute("aria-busy", "true");
     let data;
     try { data = await api("/api/ranking?" + p); }
-    catch { if (my === state.seq) { $("rows").innerHTML = `<tr><td colspan="8" class="empty err">Greška pri dohvaćanju podataka.</td></tr>`; $("card").setAttribute("aria-busy", "false"); } return; }
+    catch { if (my === state.seq) { $("rows").innerHTML = `<tr><td colspan="9" class="empty err">Greška pri dohvaćanju podataka.</td></tr>`; $("card").setAttribute("aria-busy", "false"); } return; }
     if (my !== state.seq) return; // stigao je noviji zahtjev
     $("card").setAttribute("aria-busy", "false");
     const tb = $("rows");
     const pair = { bought: "spent", sold: "earned" };
     const cls = (k) => `num ${k === "spent" || k === "earned" ? "money mny" : ""} ${state.sort === k || (narrow.matches && pair[k] === state.sort) ? "main" : ""}`;
     if (!data.rows.length) {
-      tb.innerHTML = `<tr><td colspan="8" class="empty">Nema rezultata za odabrane filtere.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="9" class="empty">Nema rezultata za odabrane filtere.</td></tr>`;
     } else {
       tb.innerHTML = data.rows.map((r) => `
         <tr data-id="${esc(r.user_id)}" data-av="${esc(r.avatar || "")}">
           <td class="sel">${cmpBox(r.user_id, r.name || r.user_id, r.avatar)}</td>
           <td class="rank">${r.rank}</td>
-          <td class="name"><span class="nm">${avatar(r.avatar, r.name || r.user_id)}<button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span><span class="sub">${esc(r.country_name || "")}</span></td>
+          <td class="name"><span class="nm">${avatar(r.avatar, r.name || r.user_id)}<button type="button">${esc(r.name || r.user_id)}</button>${profLink(r.user_id, r.name || r.user_id)}</span><span class="sub">${esc(r.country_name || "")}<span class="m-diff"> · razlika ${(r.diff > 0 ? "+" : "") + fmt(r.diff)}</span></span></td>
           <td class="ctry">${esc(r.country_name || "–")}</td>
           <td class="${cls("bought")}">${fmt(r.bought)}<span class="sub">${fmtM(r.spent)}</span></td>
           <td class="${cls("spent")}">${fmtM(r.spent)}</td>
           <td class="${cls("sold")}">${fmt(r.sold)}<span class="sub">${fmtM(r.earned)}</span></td>
           <td class="${cls("earned")}">${fmtM(r.earned)}</td>
+          <td class="${cls("diff")} diff mdiff">${(r.diff > 0 ? "+" : "") + fmt(r.diff)}</td>
         </tr>`).join("");
     }
     $("prev").disabled = state.offset === 0;
@@ -1186,8 +1190,8 @@
       const num = (v, dec) => (v == null ? "" : Number(v).toLocaleString("hr-HR", { useGrouping: false, minimumFractionDigits: dec, maximumFractionDigits: dec }));
       const cell = (v) => { const s = String(v ?? ""); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const m = state.meta.get(state.item);
-      const lines = [["Rang", "Igrač", "Država", "Kupljeno", "Potrošeno", "Prodano", "Zarađeno", "Item", "Od", "Do", "Profil"].join(";")];
-      for (const r of rows) lines.push([r.rank, r.name || r.user_id, r.country_name || "", num(r.bought, 0), num(r.spent, 2), num(r.sold, 0), num(r.earned, 2),
+      const lines = [["Rang", "Igrač", "Država", "Kupljeno", "Potrošeno", "Prodano", "Zarađeno", "Razlika", "Item", "Od", "Do", "Profil"].join(";")];
+      for (const r of rows) lines.push([r.rank, r.name || r.user_id, r.country_name || "", num(r.bought, 0), num(r.spent, 2), num(r.sold, 0), num(r.earned, 2), num(r.diff, 0),
         m ? m.name : state.item || "", isoToHr(base.get("from")) || "", isoToHr(base.get("to")) || "", profileUrl(r.user_id)].map(cell).join(";"));
       // BOM i ; kao razdjelnik da hrvatski Excel ispravno otvori datoteku i decimalne zareze
       const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
