@@ -33,6 +33,7 @@ TRACKED_COUNTRIES = "Croatia,Cuba,Kyrgyzstan,Botswana"
 HISTORY_DAYS = "30"
 
 # Koliko upisanih redaka dnevno (UTC) smije potrošiti sinkronizacija prije nego povijest stane do iduće ponoći.
+# Raspoređuje se kroz dan: u 06 h UTC povijest smije do četvrtine, u 12 h do polovice itd. (praćenje uživo ima prednost).
 # Besplatni D1 dopušta 100 000; ostatak ostaje za nove transakcije i ostale upise, da praćenje uživo ne stane.
 HISTORY_DAILY_WRITES = "70000"
 

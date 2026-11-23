@@ -396,9 +396,13 @@ async function syncTransactions(env, meta, pages) {
   const writeBase = meta.w_day === today ? Number(meta.w_rows) || 0 : 0;
   // od HISTORY_EOD_FROM (UTC) do ponoći proračun se podiže na HISTORY_EOD_WRITES, da se iskoristi ostatak limita
   const eodFrom = /^\d{2}:\d{2}$/.test(env.HISTORY_EOD_FROM || "") ? env.HISTORY_EOD_FROM : "23:30";
+  // Proračun se raspoređuje kroz dan: u trenutku t (dio UTC dana) povijest smije ići dok su ukupni
+  // današnji upisi (povijest + praćenje uživo) ispod HISTORY_DAILY_WRITES × t. Tako praćenje uživo
+  // uvijek ima mjesta do kraja dana, a povijest ne može potrošiti limit odjednom (npr. u ponoć).
+  const dayFrac = (Date.now() % 86_400_000) / 86_400_000;
   const histLimit = new Date().toISOString().slice(11, 16) >= eodFrom
     ? Number(env.HISTORY_EOD_WRITES) || 85000
-    : Number(env.HISTORY_DAILY_WRITES) || 70000;
+    : Math.floor((Number(env.HISTORY_DAILY_WRITES) || 70000) * dayFrac);
   let stored = 0;
   const writesToday = () => writeBase + stored + lookups.written;
   const days = Number(env.HISTORY_DAYS);

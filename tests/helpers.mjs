@@ -124,7 +124,9 @@ export async function loadWorker() {
 export function baseEnv(DB, extra = {}) {
   return {
     DB, WARERA_API_KEY: "test", PAGE_BUDGET: "12", LOOKUP_BUDGET: "6",
-    TRACKED_COUNTRIES: "Croatia,Cuba,Kyrgyzstan,Botswana", HISTORY_DAYS: "30", TX_TYPE: "trading", ...extra,
+    TRACKED_COUNTRIES: "Croatia,Cuba,Kyrgyzstan,Botswana", HISTORY_DAYS: "30", TX_TYPE: "trading",
+    // testovi koji ne provjeravaju proračun: neograničeno (inače bi ishod ovisio o dobu dana)
+    HISTORY_DAILY_WRITES: "1000000000", ...extra,
   };
 }
 

@@ -184,3 +184,18 @@ test("API usporedbe: zbroj po itemu za odabrane igrače, najviše 4", async () =
   }
   assert.equal((await get(worker, env, "/api/compare?ids=")).status, 400);
 });
+
+test("proračun za povijest raspoređen je kroz dan (ne troši se odjednom u ponoć)", async () => {
+  const realNow = Date.now;
+  // 00:30 UTC: smije se potrošiti tek ~2 % dnevnog proračuna
+  const base = Math.floor(realNow() / 86_400_000) * 86_400_000 + 30 * 60_000;
+  Date.now = () => base;
+  try {
+    const { db } = await synced({ api: { globalDays: 3 }, env: { HISTORY_DAILY_WRITES: "100000", HISTORY_EOD_FROM: "99:99" } }, 20);
+    const w = Number(db.prepare("SELECT value FROM meta WHERE key = 'w_rows'").get().value);
+    assert.ok(w < 100000 * (31 / 1440) + 6000, `u 00:30 potrošeno previše: ${w}`);
+    assert.ok(db.prepare("SELECT COUNT(*) n FROM players WHERE hist_done = 0").get().n > 0);
+  } finally {
+    Date.now = realNow;
+  }
+});
