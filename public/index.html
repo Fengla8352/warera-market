@@ -274,11 +274,6 @@
   #c-table td.num { min-width: 92px; }
   #c-table .cv { display: block; font-variant-numeric: tabular-nums; }
   #c-table td.top .cv { color: var(--rank); font-weight: 700; }
-  .cbar { display: block; height: 4px; margin-top: 4px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
-  .cbar i { display: block; height: 100%; background: var(--rank); opacity: .55; border-radius: 2px; }
-  #c-table td.top .cbar i { opacity: 1; }
-  #c-table tfoot td { font-weight: 700; color: var(--text); border-top: 1px solid var(--line); border-bottom: 0; }
-  #c-table tfoot td.top { color: var(--rank); }
   #c-table .item-cell .tile { --s: 26px !important; cursor: default; opacity: 1 !important; border-radius: 5px; }
   .pager .mid { display: flex; align-items: center; gap: 12px; }
   #csv { min-width: 0; padding: 7px 12px; font-size: 13px; }
@@ -1099,7 +1094,6 @@
   const CMP_MAX = 4;
   state.cmp = new Map(); // id -> { name, avatar }
   state.cmpMetric = "bought";
-  const CMP_LABEL = { bought: "Kupljeno", spent: "Potrošeno", sold: "Prodano", earned: "Zarađeno" };
   const cmpBox = (id, name, av) => {
     const on = state.cmp.has(id), full = !on && state.cmp.size >= CMP_MAX;
     return `<button type="button" class="cmp${on ? " on" : ""}" data-id="${esc(id)}" data-name="${esc(name)}" data-av="${esc(av || "")}"` +
@@ -1170,12 +1164,9 @@
       const vals = players.map((p) => val.get(m.code)?.get(p.user_id) || 0);
       const max = Math.max(...vals);
       return `<tr><td><span class="item-cell">${tile(m.code)}<span class="iname">${esc(m.name)}</span></span></td>` + vals.map((v) =>
-        `<td class="num${v && v === max ? " top" : ""}"><span class="cv">${f(v)}</span><span class="cbar"><i style="width:${max ? Math.round((v / max) * 100) : 0}%"></i></span></td>`).join("") + "</tr>";
+        `<td class="num${v && v === max ? " top" : ""}"><span class="cv">${f(v)}</span></td>`).join("") + "</tr>";
     }).join("") : `<tr><td colspan="${players.length + 1}" class="empty">Odabrani igrači nemaju prometa u ovom razdoblju.</td></tr>`;
-    const tot = players.map((p) => d.rows.filter((r) => r.user_id === p.user_id).reduce((a, r) => a + (r[k] || 0), 0));
-    const tmax = Math.max(...tot);
-    const foot = `<tfoot><tr><td>Ukupno · ${esc(CMP_LABEL[k].toLowerCase())}</td>${tot.map((v) => `<td class="num${v && v === tmax ? " top" : ""}">${f(v)}</td>`).join("")}</tr></tfoot>`;
-    $("c-table").innerHTML = head + `<tbody>${body}</tbody>` + foot;
+    $("c-table").innerHTML = head + `<tbody>${body}</tbody>`;
   }
 
   /* ---------- izvoz u CSV (sve stranice za trenutne filtere) ---------- */
