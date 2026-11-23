@@ -104,6 +104,8 @@ test("API: rang lista, prozor igrača, pregled, cijene i status", async () => {
   for (const r of rk.body.rows) assert.equal(r.diff, r.bought - r.sold, "razlika = kupljeno − prodano");
   const byDiff = await get(worker, env, "/api/ranking?limit=10&sort=diff");
   for (let i = 1; i < byDiff.body.rows.length; i++) assert.ok(byDiff.body.rows[i - 1].diff >= byDiff.body.rows[i].diff, "poredak po razlici");
+  const byDiffAsc = await get(worker, env, "/api/ranking?limit=10&sort=diff&dir=asc");
+  for (let i = 1; i < byDiffAsc.body.rows.length; i++) assert.ok(byDiffAsc.body.rows[i - 1].diff <= byDiffAsc.body.rows[i].diff, "obrnuti poredak po razlici");
 
   const pl = await get(worker, env, "/api/player/" + rk.body.rows[0].user_id + "?items=bread");
   assert.equal(pl.status, 200);

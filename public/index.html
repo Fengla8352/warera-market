@@ -221,7 +221,8 @@
   td.rank, th.rank { width: 56px; color: var(--muted); font-variant-numeric: tabular-nums; }
   th button { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
   th button:hover { color: var(--text); }
-  th[aria-sort="descending"] button { color: var(--rank); }
+  th[aria-sort="descending"] button, th[aria-sort="ascending"] button { color: var(--rank); }
+  th[aria-sort="ascending"] button::after { content: "↑"; }
   td .sub { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
   td.num .sub { display: none; font-variant-numeric: tabular-nums; }
   .money { font-variant-numeric: tabular-nums; }
@@ -499,7 +500,7 @@
 (() => {
   const LIMIT = 50;
   const $ = (id) => document.getElementById(id);
-  const state = { item: null, offset: 0, sort: "bought", meta: new Map(), seq: 0 };
+  const state = { item: null, offset: 0, sort: "bought", dir: "desc", meta: new Map(), seq: 0 };
   const fmtDT = (iso) => { const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
   const fmt = (n) => Number(n || 0).toLocaleString("hr-HR");
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -723,6 +724,7 @@
     if (f) u.set("from", f);
     if (t) u.set("to", t);
     if (state.sort !== "bought") u.set("sort", state.sort);
+    if (state.dir === "asc") u.set("dir", "asc");
     if ($("q").value.trim()) u.set("q", $("q").value.trim());
     if (state.cmp && state.cmp.size) u.set("compare", [...state.cmp.keys()].join(","));
     const qs = u.toString();
@@ -760,7 +762,7 @@
   function syncSortHeaders() {
     for (const b of document.querySelectorAll("th button[data-sort]")) {
       const active = b.dataset.sort === state.sort || (narrow.matches && b.dataset.alt === state.sort);
-      b.closest("th").setAttribute("aria-sort", active ? "descending" : "none");
+      b.closest("th").setAttribute("aria-sort", active ? (state.dir === "asc" ? "ascending" : "descending") : "none");
       if (b.dataset.alt) b.textContent = narrow.matches && b.dataset.alt === state.sort ? LABEL[b.dataset.alt] : LABEL[b.dataset.sort];
     }
   }
@@ -768,7 +770,7 @@
   async function load() {
     const my = ++state.seq;
     writeUrl();
-    const p = periodParams(new URLSearchParams({ limit: LIMIT, offset: state.offset, sort: state.sort }));
+    const p = periodParams(new URLSearchParams({ limit: LIMIT, offset: state.offset, sort: state.sort, dir: state.dir }));
     if ($("q").value.trim()) p.set("q", $("q").value.trim());
     if ($("country").value) p.set("country", $("country").value);
     $("card").setAttribute("aria-busy", "true");
@@ -810,6 +812,9 @@
   $("next").onclick = () => { state.offset += LIMIT; load(); window.scrollTo({ top: 0 }); };
   for (const b of document.querySelectorAll("th button[data-sort]")) {
     b.onclick = () => {
+      // Razlika: ponovni klik okreće smjer (najmanji prvi, pa opet najveći prvi)
+      if (b.dataset.sort === "diff" && state.sort === "diff") state.dir = state.dir === "asc" ? "desc" : "asc";
+      else state.dir = "desc";
       // mobitel: drugi dodir na isti stupac prebacuje na novac i natrag
       state.sort = narrow.matches && b.dataset.alt && state.sort === b.dataset.sort ? b.dataset.alt : b.dataset.sort;
       syncSortHeaders(); reload();
@@ -1177,7 +1182,7 @@
   $("csv").onclick = async () => {
     const btn = $("csv"); btn.disabled = true; const label = btn.textContent; btn.textContent = "Priprema…";
     try {
-      const base = periodParams(new URLSearchParams({ limit: 100, sort: state.sort }));
+      const base = periodParams(new URLSearchParams({ limit: 100, sort: state.sort, dir: state.dir }));
       if ($("q").value.trim()) base.set("q", $("q").value.trim());
       if ($("country").value) base.set("country", $("country").value);
       const rows = [];
@@ -1247,6 +1252,7 @@
   // adresa stranice ima prednost pred zapamćenim izborom
   state.item = urlIn.get("item") || store.get("wm_item");
   if (SORTS.includes(urlIn.get("sort"))) state.sort = urlIn.get("sort");
+  if (state.sort === "diff" && urlIn.get("dir") === "asc") state.dir = "asc";
   syncSortHeaders();
   setDates(validIso(urlIn.get("from")), validIso(urlIn.get("to")));
   if (urlIn.get("q")) $("q").value = urlIn.get("q");

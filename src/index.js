@@ -722,6 +722,8 @@ async function apiRanking(env, url) {
   const alliance = p.get("alliance");
   const q = (p.get("q") || "").trim();
   const SORTS = ["bought", "sold", "spent", "earned", "diff"];
+  // smjer: dir=asc prikazuje najmanje prve (npr. najveći neto prodavači po razlici)
+  const dir = p.get("dir") === "asc" ? "ASC" : "DESC";
   const sortCol = SORTS.includes(p.get("sort")) ? p.get("sort") : "bought";
   const limit = Math.min(Math.max(Number(p.get("limit")) || 50, 1), 100);
   const offset = Math.max(Number(p.get("offset")) || 0, 0);
@@ -755,7 +757,7 @@ async function apiRanking(env, url) {
     "LEFT JOIN players p ON p.user_id = d.user_id " +
     "LEFT JOIN countries c ON c.id = p.country_id " +
     (where.length ? "WHERE " + where.join(" AND ") + " " : "") +
-    `GROUP BY d.user_id ORDER BY ${sortCol} DESC, d.user_id LIMIT ? OFFSET ?`;
+    `GROUP BY d.user_id ORDER BY ${sortCol} ${dir}, d.user_id LIMIT ? OFFSET ?`;
 
   const { results } = await env.DB.prepare(sql)
     .bind(...args, limit + 1, offset)
